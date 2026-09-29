@@ -1,0 +1,241 @@
+# Scout — audit and upgraded plan
+
+Written 2026-09-29, revised 2026-09-29 to follow [SPEC.md](SPEC.md). **SPEC.md is the source of truth for the prediction problem; this file is the delivery plan.** Milestones run from Oct 5 to Nov 15 on a budget of 12–15 h/week (72–90 h).
+
+---
+
+## 0. Decisions (2026-09-29)
+
+From [SPEC.md](SPEC.md). These replace the Phase 1–2 design in the code committed at `aa607c0` (now "v0").
+
+| Topic | v0 (current code) | Decision (SPEC) |
+|---|---|---|
+| Prediction unit | Every valuation date | One player per **1 September snapshot**, 2013–2024 |
+| Current value | Valuation on the snapshot date | Latest valuation on or before the snapshot |
+| Target | First valuation in [t+335, t+425] | log(value as of the next 1 Sep / current value), each the latest valuation on or before its date; keep only snapshots with ≥ 1 new valuation between the two dates |
+| Population | 14 leagues, all players | 7 leagues (GB1, ES1, L1, IT1, FR1, NL1, PO1, IDs confirmed in `competitions.csv`); club at the snapshot is in one of them; **≥ 450 league minutes in those leagues in the previous season**; players arriving from outside them excluded |
+| Club at t | `player_valuations.current_club_id` | **Rebuilt from `transfers`** (as-of); current-state columns are never used |
+| Features | age, value, 6m momentum, minutes 6/12m + trend, G+A/90, league, club ppg, position | age, position, league, log value, **12m value change**, previous-season minutes / appearances / G+A per 90, **share of team minutes**, **squad value as of t**, **club moves in last 12m** |
+| Split | By date with purge; val 2023-24, test 2024-25 | Train snapshots 2013–2021, val 2022, **test 2023–2024**. Annual targets end exactly at the next snapshot, so no purge is needed. |
+| Metrics | MAE, RMSE, direction | **MAE, directional accuracy, 80% interval coverage**, all also broken down by snapshot year (2019 overlaps the COVID dip). RMSE kept as secondary. |
+| Success | — | Beat no-change and linear on test; 80% intervals cover **75–85%** of test cases |
+| Data | Kaggle download, unversioned | CC0-1.0; collection stopped (valuations end 2026-06-12); record the download date + file hashes |
+| Live demo | — | Predictions use data as of 2026-06-12 |
+| Out of scope | — | Transfer fees, Brazil and other calendar-year leagues (v2), women's/youth football, live updates, betting, fine-tuning, a full frontend (thin UI only) |
+
+**v0 is kept as history.** `reports/evaluation.md` becomes the "per-valuation snapshot" baseline study for the README's "what didn't work / what changed" section. Parts of v0 carry over: the leakage-test pattern, the `_asof`/window helpers, the SHAP explainer, and the baselines.
+
+**Data check for the club rebuild (2026-09-29, read-only):** at 2023-09-01, the club derived from transfers matches the club the player appeared for in the next 60 days for **95.1%** of active players (n = 5,487). Transfer rows are much sparser in early years (4.7k in 2013 vs 16.7k in 2023), so M1 must measure agreement **per snapshot year** before relying on it. If a year falls clearly below ~90%, stop and decide on a fallback (e.g. the club from the valuation at or before t, which is also point-in-time).
+
+---
+
+## 1. Audit (2026-09-29)
+
+### 1.1 Status of the original phases
+
+| Phase | Status | Evidence |
+|---|---|---|
+| 0 Scaffolding | Done | `docker-compose.yml`, `Dockerfile`, `scout/api/main.py` (`/health`), `pyproject.toml` + `uv.lock`; commit `d037266` |
+| 1 Data and target | **Partial** | Committed `aa607c0`. `scout/data/target.py`, `tests/test_target.py`, `notebooks/01_eda.ipynb` and `db/schema.sql` are done for v0. `scout/data/load.py` has **never run** against Postgres. The target must be rebuilt to the SPEC. |
+| 2 Features and model | Done for v0 | Committed `aa607c0`. `scout/ml/{features,train,model}.py`, `tests/test_{features,model}.py`, `reports/`; `models/lgbm.txt` (gitignored). Features and splits must be rebuilt to the SPEC. |
+| 3 News RAG | Not started | `scout/news/` is empty |
+| 4 Agent and API | Not started | Only `/health` exists |
+| 5 Frontend | Not started | `frontend/.gitkeep` |
+
+### 1.2 Correctness checks on v0 (run read-only)
+
+| Check | Result |
+|---|---|
+| Target | Pass. An independent brute-force check of 4,431 snapshots found 0 mismatches; gaps are all within the window, with no zero values. |
+| Leakage | Pass. The synthetic future-data test passes, and a real-data check of 120 snapshots × 11 features with all tables truncated at t found 0 differences. Soft spot: `position` is the player's current value. |
+| Splits | Time-based with purge: pass. **Test discipline: partial.** `train.py` printed test metrics on every run (viewed about 4 times); no tuning was based on them. |
+| Baselines | Pass. No-change, age-only and ridge are all reported (test MAE 0.469 / 0.413 / 0.402 vs LightGBM 0.394; direction 73.0%). |
+
+### 1.3 Code health
+15 tests pass; nothing covers the DB. Seeds are set and `uv.lock` is committed, but Python isn't pinned (the local `.venv` is 3.13, the Dockerfile uses 3.11). There's no single end-to-end command, no dataset manifest, no secrets in the tree or git history, and `pip-audit` found no known vulnerabilities.
+
+### 1.4 Bugs and risks, ranked
+
+| # | Severity | Finding | Fix (milestone) |
+|---|---|---|---|
+| 1 | ~~High~~ Resolved | Phase 1–2 work was uncommitted | Committed and pushed `aa607c0` |
+| 2 | High | The Postgres path has never run (schema types and `COPY` unverified) | Docker, run the load, DB smoke test (M1) |
+| 3 | High | v0 target, population, features and split differ from the SPEC | Rebuild in M1 (§3) |
+| 4 | Medium | Club rebuild from `transfers` is unvalidated for early years | Agreement per snapshot year; stop and ask if < ~90% (M1) |
+| 5 | Medium | Test metrics are computed on every training run | `--final` gate + logged final runs (M1) |
+| 6 | Medium | Selection bias: the target requires a revaluation and the population requires ≥ 450 minutes | Report the excluded share by year/age (M2) |
+| 7 | Medium (security) | Postgres published on `0.0.0.0:5432` with password `scout` | Bind to `127.0.0.1`, generated password (M1) |
+| 8 | Medium (security) | The app and loader connect as the Postgres superuser | Owner, loader and read-only agent roles (M1; test in M5) |
+| 9 | Low (security) | `load.py` builds SQL identifiers with f-strings from CSV headers (`load.py:25`, `:36`) | `psycopg.sql.Identifier` + column allow-list (M1) |
+| 10 | Low | Docker images unpinned, container runs as root, no `--frozen`, no `models/` in the image | Hardening (M2) |
+| 11 | Low | The dataset is frozen (collection stopped), but its version isn't recorded | `data/manifest.json` with hashes + download date (M1) |
+
+---
+
+## 2. Gap analysis against the upgraded scope
+
+Effort: S = up to 3 h, M = 3–8 h, L = more than 8 h.
+
+| # | Item | Status | What must change | Effort | Depends on |
+|---|---|---|---|---|---|
+| 0 | **Rebuild to the SPEC** | Partial (v0) | Annual snapshots, new target, population, transfers-based club, new features, 2013–2021 / 2022 / 2023–24 split, errors by year | L | Club-rebuild validation |
+| 1 | 80% intervals + coverage | Missing | Quantile LightGBM (q = 0.1/0.9) + split-conformal on the 2022 val set; coverage on test overall, by year and by segment; target 75–85% | M | Rebuild, test gate |
+| 2 | MLflow | Missing | New dependency (ask); Postgres backend store; log params, metrics, manifest hash, git SHA, model | S–M | Manifest, DB |
+| 3 | LLM news features | Missing | Guardian backfill, alias table, linker (skip ambiguous), 100 hand-checked links, Haiku structured outputs via Batch API, cache on `(article_id, prompt_version)`, point-in-time join, ablation, coverage. **Kept only if the ablation shows a gain.** | L | Guardian key, DB, `anthropic` SDK (ask), terms |
+| 4 | Hybrid retrieval + reranker + citations | Missing | `tsvector` + pgvector with RRF, metadata filters, recency decay, measured reranker, `[n]` citations | M–L | Embedding provider, #3 |
+| 5 | Number guardrail | Missing | Extract numbers from answers, normalize, match against that turn's tool outputs, log violations, regenerate once then flag | M | Agent |
+| 6 | MCP server | Missing | Read-only `get_player`, `predict_value_change`, `search_players`, `search_news`, `compare_players`; MCP Inspector | S–M | Tools; `mcp` SDK (ask) |
+| 7 | Eval suite + calibrated judge | Missing | 60-question golden set, recall@k, faithfulness, correctness, judge vs 50 of your labels | L | Agent, your labeling |
+| 8 | CI | Missing | pytest, pip-audit, CodeQL, Dependabot; eval subset per PR on a fixture DB (CC0 data, so a small sample can be committed); nightly/manual full run | M | Repo settings, API key secret |
+| 9 | Ops | Missing | Deploy, tracing to Postgres, cost/p95/cache dashboard, prompt caching, model routing | L | Host decision |
+| 10 | Presentation | Partial | Architecture diagram; results table (baselines, news ablation, evals, coverage, security); "what didn't work" (v0 → SPEC is the first entry); data caveats | M | Everything |
+| 11 | Thin UI | Missing | Chat + player page with SHAP chart and interval. **Deferred** (SPEC: thin UI only). | M | API |
+| 12 | Security gates | Missing | `.claude/settings.json`, gitleaks pre-commit, CodeQL/pip-audit/Dependabot, branch protection, package vetting | M | Repo admin |
+| 13 | AI-feature security | Missing | Read-only role, read-only MCP, rate limits + spend cap, injection evals, OWASP mapping (§5) | M | Agent, evals |
+| 14 | SECURITY.md | Missing | Skeleton in M1, completed in M6 | S → M | — |
+
+**News-feature leakage risks:**
+- **Article edits:** Guardian articles can be edited after publication. Use the first-publication date and record `lastModified`.
+- **LLM hindsight:** the extractor knows how players' careers turned out. Extract only explicit statements, each with an evidence quote verified against the article text, and don't extract free-form sentiment.
+
+---
+
+## 3. Milestones
+
+| Milestone | Dates | Est. h | Headline |
+|---|---|---|---|
+| Pre-M1 | Sep 30–Oct 4 | ~3 | Enable virtualization, get Docker running, run the v0 load, fix schema issues |
+| M1 | Oct 5–11 | 17 | Rebuild the pipeline to the SPEC; leakage tests; test gate; core security gates |
+| M2 | Oct 12–18 | 16 | MLflow, 80% intervals + coverage, CI/Docker hardening, start the Guardian backfill |
+| M3 | Oct 19–25 | 16 | Player linking, LLM news features, ablation |
+| M4 | Oct 26–Nov 1 | 17 | Hybrid retrieval, citations, tools API, agent, number check |
+| M5 | Nov 2–8 | 18.5 | Eval suite, calibrated judge, CI evals, MCP, injection tests |
+| M6 | Nov 9–15 | 12.5 | Tracing, dashboard, caching, rate limits, README, SECURITY.md; local demo |
+| **Total** | | **~100** | vs 72–90 h (see §4) |
+
+### Pre-M1 (Sep 30–Oct 4)
+- [ ] Enable virtualization in the BIOS, `wsl --install`, Docker Desktop running
+- [ ] Run `scout.data.load` and fix any schema/type errors, so M1 starts with a working DB
+
+### M1: rebuild to the SPEC (Oct 5–11)
+- [ ] `data/manifest.json`: sha256 per CSV + download date; the pipeline checks it
+- [ ] Club membership as of t from `transfers` (ignore rows dated after the data cut-off); **agreement with appearances club per snapshot year**; stop and ask if a year is below ~90%
+- [ ] Annual snapshots (1 Sep, 2013–2024): current value = latest valuation ≤ t; target = latest valuation ≤ next 1 Sep; keep only if ≥ 1 new valuation in between
+- [ ] Population: club in the 7 leagues at t; ≥ 450 league minutes in those leagues in the previous season
+- [ ] Features: age, position, league, log value, 12m value change, previous-season minutes/apps/G+A per 90, share of team minutes, squad value as of t (from as-of valuations), club moves in last 12m
+- [ ] Leakage tests for every feature (append future rows → no change) + the real-data truncation check
+- [ ] Split 2013–2021 / 2022 / 2023–24; baselines no-change + linear (age-only kept as an extra reference); MAE + direction by year; `train.py --final` gates test and logs each final run
+- [ ] One command: `uv run python -m scout.pipeline`
+- [ ] Pin Python (`.python-version`, matching Docker); DB bound to `127.0.0.1`; `psycopg.sql.Identifier` in `load.py`; DB roles (owner / loader / `scout_agent_ro`)
+- [ ] `.claude/settings.json` deny rules; gitleaks pre-commit; CI with pytest + pip-audit; `SECURITY.md` skeleton
+
+**Done when:** one command rebuilds the results from the raw CSVs; club-rebuild agreement is reported per year; every feature has a leakage test; the test set has been evaluated exactly once; CI is green.
+**Risks:**
+- **Early-year club rebuild accuracy.** Measured first, before building anything on it.
+- **Small data.** Annual snapshots × 7 leagues × ≥ 450 min gives roughly 2–3k rows per year, so the test set (2 years) is about 5k rows and the val set a single year. Expect noisier comparisons, and report confidence intervals on MAE differences (bootstrap).
+- **Over budget at 17 h.** If the week runs short, gitleaks and CI move to M2.
+
+### M2: MLflow, intervals, hardening, early news backfill (Oct 12–18)
+- [ ] MLflow (after approval) with a Postgres backend store; every training run logged
+- [ ] Quantile LightGBM + split-conformal on 2022 → 80% intervals; `explain()` returns the interval
+- [ ] Coverage on test overall and by year / age / value band (target 75–85%); interval width; one `--final` run; report updated
+- [ ] Excluded-share report (no revaluation, < 450 min) by year/age
+- [ ] CI: CodeQL + Dependabot + branch protection; Docker: digests, non-root, `--frozen`
+- [ ] Guardian client + `articles` table; start the resumable historical backfill (it runs for days under daily call limits)
+
+**Done when:** runs appear in MLflow; the coverage table is in the report; the backfill is running.
+**Risks:** a single calibration year (2022) against a 2023–24 test gives conformal coverage under drift, so report by year; Guardian terms (checked before the backfill).
+
+### M3: news features (Oct 19–25)
+- [ ] Chunking + storage; alias table (names + clubs over time)
+- [ ] Linker (name + club at article date; skip ambiguous, count skips); you hand-check 100 links → precision (target ≥ 0.95)
+- [ ] Extraction v1: Haiku (model name from config), structured outputs, Batch API; injury / rumour / contract / manager change, each with a verified evidence quote; cache on `(article_id, prompt_version)`
+- [ ] Point-in-time features over the 90/365 days before each 1 Sep (`published_at < t`) + leakage test
+- [ ] Ablation (val, then one test run) + coverage by league; **features kept only if they help**
+
+**Done when:** the ablation and coverage tables are in the report; extraction cost is recorded; a re-run hits the cache.
+**Risks:** sparse coverage outside England (report it; a null result is a valid result); hindsight leakage.
+
+### M4: retrieval and agent (Oct 26–Nov 1)
+- [ ] Embeddings (provider to be decided) in pgvector + `tsvector`; RRF hybrid; filters; recency decay
+- [ ] Haiku listwise reranker over the top 20, kept only if recall@5 improves
+- [ ] FastAPI tools with Pydantic validation; parameterized SQL; read-only role; predictions as of 2026-06-12
+- [ ] Streaming agent; `[model]` / `[news n]` labels with URL and date; Transfermarkt caveat; news wrapped as untrusted data
+- [ ] Number check + violation log (regenerate once, then flag)
+
+**Done when:** streaming chat answers all 4 tool types with citations; a planted wrong number is caught in a unit test.
+
+### M5: evals, CI evals, MCP (Nov 2–8)
+- [ ] 60-question golden set: lookups, explanations, news-grounded, comparisons, unanswerables, a planted injection article, injection in the user question
+- [ ] Recall@5 labels; LLM judge; you label 50 answers → agreement + κ
+- [ ] Eval runner + thresholds; CI subset (about 12 questions) per PR on a fixture DB; full suite nightly/manual
+- [ ] MCP server (stdio), read-only, 5 tools; MCP Inspector
+- [ ] Test that the agent role can't write or run DDL; injection attempts logged
+
+**Done when:** the CLAUDE.md thresholds are met or misses are documented honestly; PR checks run the eval subset.
+
+### M6: operations and presentation (Nov 9–15)
+- [ ] Tracing to Postgres (model, tokens in/out/cached, latency, cost, tools, violations)
+- [ ] Dashboard (read-only page or SQL views): cost per query, p95 latency, cache hit rate
+- [ ] Prompt caching on tools + system prompt (verify cache reads; the prefix must exceed the minimum cacheable size)
+- [ ] Rate limits + daily LLM spend cap
+- [ ] README: architecture diagram, results table (baselines, news ablation, evals, coverage, security), "what didn't work" (v0 first), data caveats
+- [ ] SECURITY.md complete with OWASP mapping and test evidence
+- [ ] Local demo (`docker compose up`) + recorded walkthrough
+
+**Done when:** every row of the README results table comes from a real run; the dashboard shows real traffic.
+
+---
+
+## 4. Budget and what to cut
+
+The full scope plus the SPEC rebuild comes to about 125 h; the budget is 72–90 h. **Already cut** (reflected above):
+
+| Cut | Saves | Why |
+|---|---|---|
+| Thin UI deferred until after M6 | ~8 h | SPEC: thin UI only; the API, MCP and evals show more per hour |
+| Cloud deploy → local `docker compose` demo + recording | ~4 h | No hosting cost; deploy-ready images stay |
+| Model routing deferred | ~1.5 h | Needs traffic to justify; single model with prompt caching first |
+| Tracing and dashboard in Postgres, not Langfuse | ~3 h | No new service |
+| Golden set of 60, not 100 | ~1.5 h | Grows later |
+| Sentiment dropped from extraction | ~1 h | Least reliable, most exposed to hindsight |
+
+That leaves **~100 h**, still 10+ h over even at 15 h/week. The next cuts, in order: (1) reranker (−2 h, report hybrid-only recall); (2) MLflow reduced to local file-store autolog (−1.5 h); (3) news features limited to Premier League clubs (−2 h of linking work, which matches where the Guardian's coverage is anyway). At 12 h/week, **add a 7th week (Nov 16–22)** rather than cut the evals or the security work. Deferred items (cloud deploy, model routing, thin UI) go into that week or later.
+
+---
+
+## 5. OWASP mapping (tentative; verify IDs in M1)
+
+| Control | OWASP LLM Top 10 (2025) | OWASP Agentic Top 10 |
+|---|---|---|
+| News wrapped as untrusted data; injection evals; attempts logged | LLM01 Prompt Injection | ASI01 Agent Goal Hijack |
+| Read-only DB role and tools; parameterized SQL; input schemas | LLM06 Excessive Agency | ASI02 Tool Misuse, ASI03 Identity & Privilege Abuse |
+| Number check; citations; Transfermarkt caveat; faithfulness eval | LLM09 Misinformation | ASI09 Human-Agent Trust Exploitation |
+| Rate limits; spend cap; max tool iterations; `max_tokens` | LLM10 Unbounded Consumption | ASI08 Cascading Failures |
+| Lockfiles; pip-audit; Dependabot; package vetting | LLM03 Supply Chain | ASI04 Agentic Supply Chain |
+| Guardian-only ingestion; provenance; planted-article test | LLM04 Data and Model Poisoning, LLM08 Vector and Embedding Weaknesses | ASI06 Memory & Context Poisoning |
+| No secrets in prompts or logs; redaction | LLM02 Sensitive Information Disclosure, LLM07 System Prompt Leakage | — |
+| Output rendered as escaped text; never executed | LLM05 Improper Output Handling | ASI05 Unexpected Code Execution (N/A) |
+
+---
+
+## 6. Open questions
+
+Answered by SPEC.md: the target definition, data license (CC0, so a CI fixture sample can be committed), population, split and success criteria.
+
+Still open:
+1. **New dependencies and services.** Approve or reject each:
+   - `mlflow`
+   - MAPIE, or numpy conformal (recommended)
+   - `anthropic` SDK
+   - `mcp` SDK
+   - `pre-commit` + gitleaks
+   - CodeQL or Semgrep
+   - Postgres tracing (recommended) or Langfuse/LangSmith
+2. **Embeddings provider:** Voyage AI (external API) or local `sentence-transformers` (large dependency).
+3. **Local demo instead of cloud deploy.** OK? If you want a cloud deploy: host, monthly budget, daily LLM spend cap.
+4. **Eval thresholds** in CLAUDE.md. Confirm or change them.
+5. **Your labeling time:** about 1.5 h for 100 links (M3) + about 2.5 h for 50 judge answers (M5).
+6. **Is the GitHub repo public?** It decides whether CodeQL is free.
+7. **Guardian terms:** if storing bodies/embeddings isn't allowed, is "derived signals + URL only" acceptable?
+8. **Budget:** approve the cut list in §4 and the optional 7th week?

@@ -1,0 +1,68 @@
+# Scouting Value Predictor — Spec
+
+## Problem
+Predict how a football player's market value will change over the next 12 months,
+with an uncertainty range and an explanation, so a scout can spot players likely
+to rise or fall in value.
+
+## Prediction unit and target
+- Unit: one player at one snapshot date.
+- Snapshot dates: 1 September each year (after the summer window).
+- Current value: the latest valuation on or before the snapshot date.
+- Target: log(value as of the next 1 September / current value), where each
+  value is the latest valuation on or before that date.
+- Keep only snapshots with at least one new valuation between the two dates,
+  so a zero change means "revalued, unchanged", not "never updated".
+
+## Population
+- Players whose club at the snapshot plays in: Premier League, La Liga,
+  Bundesliga, Serie A, Ligue 1, Eredivisie, Liga Portugal (confirm the
+  competition IDs in the competitions table).
+- At least 450 league minutes in those leagues in the previous season.
+- Players arriving from outside these leagues are excluded in v1.
+
+## Data sources
+- transfermarkt-datasets by dcaribou (Kaggle: "Football Data from Transfermarkt"),
+  CC0-1.0 license. Collection stopped mid-July 2026; valuations end 12 June 2026.
+  Record the download date and file hash for reproducibility.
+- News (features + RAG): The Guardian Open Platform API.
+- Caveat: Transfermarkt values are crowd-sourced estimates, not transfer fees.
+
+## Baseline features (as of the snapshot date)
+- Age, position, league, current log value
+- Value change over the previous 12 months
+- Minutes, appearances, goals + assists per 90 in the previous season
+- Share of the team's minutes played
+- Club strength proxy: total squad value at the snapshot
+- Club moves in the previous 12 months
+
+## Planned additions
+- M3: LLM-extracted news features (injury, rumor, contract, manager change),
+  joined point-in-time, kept only if an ablation shows they help.
+
+## Leakage rules
+- No feature may use data dated after the snapshot.
+- Never use "current state" columns directly (current club, contract expiry,
+  highest-ever value, club market value, international caps). Rebuild club
+  membership from the transfers table and squad value from as-of valuations.
+
+## Splits and evaluation
+- Snapshots 2013–2024 (2024 is the last with a target inside the data).
+- Train: 2013–2021. Validation: 2022. Test: 2023–2024, evaluated once per milestone.
+- Report errors by snapshot year; the 2019 snapshot's target overlaps the
+  2020 COVID-era market dip.
+- Baselines: "no change" and linear regression.
+- Metrics: MAE on the log change, directional accuracy, 80% interval coverage.
+- Success: beat both baselines on the test set; 80% intervals cover 75–85%
+  of test cases.
+- Live demo predictions use data as of 12 June 2026, the last valuation date.
+
+## Out of scope
+Transfer fees, Brazilian and other calendar-year leagues (v2 candidate),
+women's and youth football, live data updates, betting use, model
+fine-tuning, a full frontend (thin UI only).
+
+## Risks
+Data collection has stopped (no newer data); coverage gaps outside the
+chosen leagues; sparse news for non-English leagues; noise in crowd-sourced
+values.
