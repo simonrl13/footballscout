@@ -25,7 +25,16 @@ to rise or fall in value.
 - transfermarkt-datasets by dcaribou (Kaggle: "Football Data from Transfermarkt"),
   CC0-1.0 license. Collection stopped mid-July 2026; valuations end 12 June 2026.
   Record the download date and file hash for reproducibility.
-- News (features + RAG): The Guardian Open Platform API.
+- News (features + RAG): The Guardian Open Platform API, under these rules:
+  - Persist only article IDs, URLs, dates, tags and extracted signals.
+  - Never persist article text beyond 24 hours: a purge job, plus a test that
+    proves it.
+  - Fetch text live when an answer or citation needs it; cache it for at most
+    24 hours.
+  - Stay within 500 API calls per day.
+  - LLM processing of article text and stored embeddings can each be switched
+    off (`NEWS_LLM_ENABLED`, `EMBEDDINGS_ENABLED`) until the Guardian terms are
+    confirmed to allow them.
 - Caveat: Transfermarkt values are crowd-sourced estimates, not transfer fees.
 
 ## Baseline features (as of the snapshot date)

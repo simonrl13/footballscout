@@ -1,6 +1,26 @@
 # Scout — audit and upgraded plan
 
-Written 2026-09-29, revised 2026-09-29 to follow [SPEC.md](SPEC.md). **SPEC.md is the source of truth for the prediction problem; this file is the delivery plan.** Milestones run from Oct 5 to Nov 15 on a budget of 12–15 h/week (72–90 h).
+Written 2026-09-29, revised the same day to follow [SPEC.md](SPEC.md) and the decisions in §0.1. **SPEC.md is the source of truth for the prediction problem; this file is the delivery plan.** Milestones run from Sep 29 to Nov 22 (7 weeks) on a budget of 12–15 h/week (84–105 h).
+
+---
+
+## 0.1 Decisions, round 2 (2026-09-29)
+
+| Topic | Decision |
+|---|---|
+| v0 rebuild | Approved for M1. The M1 report gives usable snapshot counts under **both** target definitions (the SPEC's as-of target vs v0's 335–425 day window) for the README. |
+| Club at t | Transfers-based, with the match rate reported per year. If any year is below 90%: fall back to the club of the player's last league appearance before the snapshot (August matches), then transfers, and report the match rate per year for **both** methods. Ask only if the fallback also fails. |
+| Deploy | **Kept:** AWS Lightsail or a small EC2 instance running `docker compose`, **≤ US$15/month**. A 7th week (Nov 16–22) was added for it. Model routing and the thin UI stay deferred. |
+| Dependencies | Approved: `mlflow`, `anthropic`, `mcp`, `voyageai`, `pre-commit` + gitleaks, CodeQL. Intervals in plain numpy (split conformal). Tracing in Postgres; Langfuse is a stretch goal after the project. |
+| Embeddings | Voyage AI, cached in Postgres so each text is embedded once |
+| LLM spend | US$2/day cap on public endpoints, enforced in code. **Before any bulk LLM job: estimate the cost and wait for approval.** |
+| Eval thresholds | Placeholders until the first full eval run with a validated judge; then each is set just below the measured score and raised as quality improves |
+| Hand labeling | About 4 h, approved. Labeling files are prepared so they're fast to fill in. |
+| Repo | Goes public after M1: enable CodeQL then; a small sample of the CC0 data can go into CI |
+| Guardian | Store only article IDs, URLs, dates, tags and extracted signals. **Article text is never persisted beyond 24 h** (a purge job plus a test that proves it). Text is fetched live when an answer or citation needs it, cached ≤ 24 h. ≤ 500 calls/day. LLM processing and stored embeddings **must each be switchable off** until the terms are confirmed. (Recorded in SPEC.md and SECURITY.md.) |
+| Test discipline | `train.py` never prints test metrics. A separate script with an explicit flag evaluates test and appends date, commit and reason to `docs/TEST_LOG.md`. The README notes the test set was viewed 4 times in Phase 2, with no decisions based on it. |
+| Reproducibility | Data manifest (download date + SHA-256) checked at load time; Python 3.12 locally and in Docker via uv + lockfile; one command runs load → features → train → evaluate. |
+| DB security | Postgres bound to 127.0.0.1; password in a gitignored `.env` (plus `.env.example`); a loader role with write access and a read-only role for the API/agent; CSV columns allow-listed against the schema and built with `sql.Identifier`. |
 
 ---
 
@@ -25,7 +45,7 @@ From [SPEC.md](SPEC.md). These replace the Phase 1–2 design in the code commit
 
 **v0 is kept as history.** `reports/evaluation.md` becomes the "per-valuation snapshot" baseline study for the README's "what didn't work / what changed" section. Parts of v0 carry over: the leakage-test pattern, the `_asof`/window helpers, the SHAP explainer, and the baselines.
 
-**Data check for the club rebuild (2026-09-29, read-only):** at 2023-09-01, the club derived from transfers matches the club the player appeared for in the next 60 days for **95.1%** of active players (n = 5,487). Transfer rows are much sparser in early years (4.7k in 2013 vs 16.7k in 2023), so M1 must measure agreement **per snapshot year** before relying on it. If a year falls clearly below ~90%, stop and decide on a fallback (e.g. the club from the valuation at or before t, which is also point-in-time).
+**Data check for the club rebuild (2026-09-29, read-only):** at 2023-09-01, the club derived from transfers matches the club the player appeared for in the next 60 days for **95.1%** of active players (n = 5,487). Transfer rows are much sparser in early years (4.7k in 2013 vs 16.7k in 2023), so M1 must measure agreement **per snapshot year** before relying on it. If a year falls below 90%, use the fallback agreed in §0.1 (last August league appearance, then transfers) and report both methods per year; stop and ask only if the fallback also fails.
 
 ---
 
@@ -59,7 +79,7 @@ From [SPEC.md](SPEC.md). These replace the Phase 1–2 design in the code commit
 | # | Severity | Finding | Fix (milestone) |
 |---|---|---|---|
 | 1 | ~~High~~ Resolved | Phase 1–2 work was uncommitted | Committed and pushed `aa607c0` |
-| 2 | High | The Postgres path has never run (schema types and `COPY` unverified) | Docker, run the load, DB smoke test (M1) |
+| 2 | High | The Postgres path has never run (schema types and `COPY` unverified) | Docker is running now; run the load + DB smoke test (M1) |
 | 3 | High | v0 target, population, features and split differ from the SPEC | Rebuild in M1 (§3) |
 | 4 | Medium | Club rebuild from `transfers` is unvalidated for early years | Agreement per snapshot year; stop and ask if < ~90% (M1) |
 | 5 | Medium | Test metrics are computed on every training run | `--final` gate + logged final runs (M1) |
@@ -104,103 +124,95 @@ Effort: S = up to 3 h, M = 3–8 h, L = more than 8 h.
 
 | Milestone | Dates | Est. h | Headline |
 |---|---|---|---|
-| Pre-M1 | Sep 30–Oct 4 | ~3 | Enable virtualization, get Docker running, run the v0 load, fix schema issues |
-| M1 | Oct 5–11 | 17 | Rebuild the pipeline to the SPEC; leakage tests; test gate; core security gates |
-| M2 | Oct 12–18 | 16 | MLflow, 80% intervals + coverage, CI/Docker hardening, start the Guardian backfill |
-| M3 | Oct 19–25 | 16 | Player linking, LLM news features, ablation |
-| M4 | Oct 26–Nov 1 | 17 | Hybrid retrieval, citations, tools API, agent, number check |
+| M1 | Sep 29–Oct 11 | 20 | Rebuild the pipeline to the SPEC; club validation; test gate; reproducibility; DB roles; core security gates |
+| M2 | Oct 12–18 | 16 | MLflow, 80% intervals + coverage, CodeQL (repo public), Docker hardening, Guardian metadata backfill |
+| M3 | Oct 19–25 | 16 | Player linking, LLM news features (switchable, cost-approved), ablation |
+| M4 | Oct 26–Nov 1 | 17 | Hybrid retrieval (Voyage, switchable), live-fetched citations, tools API, agent, number check |
 | M5 | Nov 2–8 | 18.5 | Eval suite, calibrated judge, CI evals, MCP, injection tests |
-| M6 | Nov 9–15 | 12.5 | Tracing, dashboard, caching, rate limits, README, SECURITY.md; local demo |
-| **Total** | | **~100** | vs 72–90 h (see §4) |
+| M6 | Nov 9–15 | 12.5 | Tracing, dashboard, prompt caching, spend cap, README, SECURITY.md |
+| M7 | Nov 16–22 | 10 | AWS deploy (≤ US$15/month), production smoke evals, final README |
+| **Total** | | **~110** | vs 84–105 h over 7 weeks (see §4) |
 
-### Pre-M1 (Sep 30–Oct 4)
-- [ ] Enable virtualization in the BIOS, `wsl --install`, Docker Desktop running
-- [ ] Run `scout.data.load` and fix any schema/type errors, so M1 starts with a working DB
-
-### M1: rebuild to the SPEC (Oct 5–11)
-- [ ] `data/manifest.json`: sha256 per CSV + download date; the pipeline checks it
-- [ ] Club membership as of t from `transfers` (ignore rows dated after the data cut-off); **agreement with appearances club per snapshot year**; stop and ask if a year is below ~90%
-- [ ] Annual snapshots (1 Sep, 2013–2024): current value = latest valuation ≤ t; target = latest valuation ≤ next 1 Sep; keep only if ≥ 1 new valuation in between
+### M1: rebuild to the SPEC (Sep 29–Oct 11; Docker is already running)
+- [ ] `data/manifest.json` (download date + SHA-256 per CSV), checked at load time
+- [ ] Python 3.12 locally (`.python-version`) and in Docker; `uv sync --frozen`
+- [ ] Club at t from transfers (ignore rows after the data cut-off); match rate per year against the club the player appeared for in the next 60 days; fallback method (last August league appearance, then transfers) measured too; stop and ask only if the fallback is also below 90%
+- [ ] Annual snapshots (1 Sep, 2013–2024): current value = latest valuation ≤ t; target = latest valuation ≤ next 1 Sep; keep only if ≥ 1 new valuation in between. Counts per year under the as-of target **and** the v0 335–425 window.
 - [ ] Population: club in the 7 leagues at t; ≥ 450 league minutes in those leagues in the previous season
-- [ ] Features: age, position, league, log value, 12m value change, previous-season minutes/apps/G+A per 90, share of team minutes, squad value as of t (from as-of valuations), club moves in last 12m
-- [ ] Leakage tests for every feature (append future rows → no change) + the real-data truncation check
-- [ ] Split 2013–2021 / 2022 / 2023–24; baselines no-change + linear (age-only kept as an extra reference); MAE + direction by year; `train.py --final` gates test and logs each final run
-- [ ] One command: `uv run python -m scout.pipeline`
-- [ ] Pin Python (`.python-version`, matching Docker); DB bound to `127.0.0.1`; `psycopg.sql.Identifier` in `load.py`; DB roles (owner / loader / `scout_agent_ro`)
-- [ ] `.claude/settings.json` deny rules; gitleaks pre-commit; CI with pytest + pip-audit; `SECURITY.md` skeleton
+- [ ] Features: age, position, league, log value, 12m value change, previous-season minutes / apps / G+A per 90, share of team minutes, squad value as of t, club moves in last 12m
+- [ ] Leakage tests for every feature (append future rows → no change) + a real-data truncation test (skipped when the CSVs are absent)
+- [ ] Split 2013–2021 / 2022 / 2023–24; baselines no-change + linear (age-only as an extra reference); LightGBM; expanding-window backtest by year on 2016–2022 (never touches test)
+- [ ] `train.py` prints no test metrics; `scout/ml/evaluate_test.py --confirm-test --reason ...` appends to `docs/TEST_LOG.md`; one M1 test run
+- [ ] One command: `uv run python -m scout.pipeline` (load → features → train → evaluate on val)
+- [ ] Postgres bound to 127.0.0.1; `.env` / `.env.example`; roles `scout_loader` (write) and `scout_reader` (read-only, API/agent); `load.py` allow-lists CSV columns and uses `sql.Identifier`
+- [ ] `.claude/settings.json` deny rules; pre-commit + gitleaks; GitHub Actions (pytest, pip-audit, gitleaks); Dependabot; `SECURITY.md` skeleton with the Guardian rules
+- [ ] Trained models written to new versioned paths (`models/<run_id>/`); never overwrite `models/lgbm.txt` (v0)
 
-**Done when:** one command rebuilds the results from the raw CSVs; club-rebuild agreement is reported per year; every feature has a leakage test; the test set has been evaluated exactly once; CI is green.
+**Done when:** one command rebuilds everything from the raw CSVs; club match rates are reported per year; every feature has a leakage test; the test set has been evaluated exactly once and logged; CI is green.
 **Risks:**
-- **Early-year club rebuild accuracy.** Measured first, before building anything on it.
-- **Small data.** Annual snapshots × 7 leagues × ≥ 450 min gives roughly 2–3k rows per year, so the test set (2 years) is about 5k rows and the val set a single year. Expect noisier comparisons, and report confidence intervals on MAE differences (bootstrap).
-- **Over budget at 17 h.** If the week runs short, gitleaks and CI move to M2.
+- **Early-year club rebuild accuracy:** measured first, with the fallback ready.
+- **Small data:** about 2–3k snapshots per year; report bootstrap intervals on MAE differences.
+- **COVID year:** the 2020 season started after 1 Sep for some leagues, so "league at t" can be one season stale for that year.
 
-### M2: MLflow, intervals, hardening, early news backfill (Oct 12–18)
-- [ ] MLflow (after approval) with a Postgres backend store; every training run logged
-- [ ] Quantile LightGBM + split-conformal on 2022 → 80% intervals; `explain()` returns the interval
-- [ ] Coverage on test overall and by year / age / value band (target 75–85%); interval width; one `--final` run; report updated
-- [ ] Excluded-share report (no revaluation, < 450 min) by year/age
-- [ ] CI: CodeQL + Dependabot + branch protection; Docker: digests, non-root, `--frozen`
-- [ ] Guardian client + `articles` table; start the resumable historical backfill (it runs for days under daily call limits)
+### M2: MLflow, intervals, hardening, news metadata backfill (Oct 12–18)
+- [ ] MLflow (Postgres backend store); every training run logged with params, metrics, manifest hash, git SHA
+- [ ] Split-conformal 80% intervals in numpy (quantile LightGBM + conformal correction on 2022); coverage on val; test coverage in the milestone's single test run (target 75–85%), by year / age / value band
+- [ ] Excluded-share report (no revaluation, < 450 minutes) by year and age
+- [ ] Repo public → CodeQL; branch protection blocking high-severity findings; Docker images pinned by digest, non-root user
+- [ ] Guardian client (≤ 500 calls/day, key from `.env`); `articles` table with **IDs, URLs, dates, tags only**; resumable metadata backfill
+- [ ] Text cache table with a 24 h TTL + purge job + a test proving nothing older than 24 h survives
 
-**Done when:** runs appear in MLflow; the coverage table is in the report; the backfill is running.
-**Risks:** a single calibration year (2022) against a 2023–24 test gives conformal coverage under drift, so report by year; Guardian terms (checked before the backfill).
+**Done when:** runs appear in MLflow; the coverage table is in the report; the backfill is running; the purge test passes.
 
 ### M3: news features (Oct 19–25)
-- [ ] Chunking + storage; alias table (names + clubs over time)
-- [ ] Linker (name + club at article date; skip ambiguous, count skips); you hand-check 100 links → precision (target ≥ 0.95)
-- [ ] Extraction v1: Haiku (model name from config), structured outputs, Batch API; injury / rumour / contract / manager change, each with a verified evidence quote; cache on `(article_id, prompt_version)`
-- [ ] Point-in-time features over the 90/365 days before each 1 Sep (`published_at < t`) + leakage test
-- [ ] Ablation (val, then one test run) + coverage by league; **features kept only if they help**
+- [ ] Alias table (names + clubs over time); linker (name + club at article date; skip ambiguous, count skips)
+- [ ] **Labeling file 1:** 100 sampled links as a CSV with article URL, sentence, candidate player/club/date and blank `correct` / `note` columns → precision (target ≥ 0.95)
+- [ ] Extraction v1 (Haiku, structured outputs, Batch API) behind a `NEWS_LLM_ENABLED` switch: text fetched live, processed, discarded; only signals + evidence offsets stored, cached on `(article_id, prompt_version)`. **Cost estimate → your approval → run.**
+- [ ] Point-in-time news features (`published_at < t`) + leakage test; ablation (val, then the milestone's test run); coverage by league; kept only if they help
 
-**Done when:** the ablation and coverage tables are in the report; extraction cost is recorded; a re-run hits the cache.
-**Risks:** sparse coverage outside England (report it; a null result is a valid result); hindsight leakage.
+**Done when:** the ablation and coverage tables are in the report; a re-run hits the cache; with the switch off, the pipeline runs without news features.
 
 ### M4: retrieval and agent (Oct 26–Nov 1)
-- [ ] Embeddings (provider to be decided) in pgvector + `tsvector`; RRF hybrid; filters; recency decay
-- [ ] Haiku listwise reranker over the top 20, kept only if recall@5 improves
-- [ ] FastAPI tools with Pydantic validation; parameterized SQL; read-only role; predictions as of 2026-06-12
-- [ ] Streaming agent; `[model]` / `[news n]` labels with URL and date; Transfermarkt caveat; news wrapped as untrusted data
-- [ ] Number check + violation log (regenerate once, then flag)
+- [ ] Voyage embeddings behind an `EMBEDDINGS_ENABLED` switch, cached in Postgres by content hash; if disabled or the terms disallow it, retrieval falls back to metadata + full-text over titles/tags
+- [ ] Hybrid retrieval (RRF), metadata filters, recency decay; Haiku reranker kept only if recall@5 improves
+- [ ] Citations: text fetched live from the Guardian API when needed, cached ≤ 24 h
+- [ ] FastAPI tools with Pydantic validation; `scout_reader` role; predictions as of 2026-06-12
+- [ ] Streaming agent; `[model]` / `[news n]` labels; Transfermarkt caveat; news treated as untrusted data
+- [ ] Number check + violation log; US$2/day spend cap enforced in code (checked before each call)
 
-**Done when:** streaming chat answers all 4 tool types with citations; a planted wrong number is caught in a unit test.
+**Done when:** streaming chat answers all 4 tool types with citations; a planted wrong number is caught in a unit test; the spend cap blocks calls in a test.
 
 ### M5: evals, CI evals, MCP (Nov 2–8)
-- [ ] 60-question golden set: lookups, explanations, news-grounded, comparisons, unanswerables, a planted injection article, injection in the user question
-- [ ] Recall@5 labels; LLM judge; you label 50 answers → agreement + κ
-- [ ] Eval runner + thresholds; CI subset (about 12 questions) per PR on a fixture DB; full suite nightly/manual
+- [ ] 60-question golden set incl. unanswerables, a planted injection article and injection in the user question
+- [ ] **Labeling file 2:** 50 answers as a CSV/markdown sheet with question, answer, tool outputs and cited sources, plus blank `faithful` / `correct` / `note` columns
+- [ ] LLM judge → agreement + κ against your labels; **cost estimate → approval → full run**; thresholds set just below the measured scores
+- [ ] CI eval subset (about 12 questions) on a CC0 fixture DB; full suite nightly/manual
 - [ ] MCP server (stdio), read-only, 5 tools; MCP Inspector
-- [ ] Test that the agent role can't write or run DDL; injection attempts logged
-
-**Done when:** the CLAUDE.md thresholds are met or misses are documented honestly; PR checks run the eval subset.
+- [ ] Test that `scout_reader` can't write or run DDL; injection attempts logged
 
 ### M6: operations and presentation (Nov 9–15)
 - [ ] Tracing to Postgres (model, tokens in/out/cached, latency, cost, tools, violations)
-- [ ] Dashboard (read-only page or SQL views): cost per query, p95 latency, cache hit rate
-- [ ] Prompt caching on tools + system prompt (verify cache reads; the prefix must exceed the minimum cacheable size)
-- [ ] Rate limits + daily LLM spend cap
+- [ ] Dashboard: cost per query, p95 latency, cache hit rate
+- [ ] Prompt caching on tools + system prompt (verify cache reads)
+- [ ] Rate limits on public endpoints
 - [ ] README: architecture diagram, results table (baselines, news ablation, evals, coverage, security), "what didn't work" (v0 first), data caveats
 - [ ] SECURITY.md complete with OWASP mapping and test evidence
-- [ ] Local demo (`docker compose up`) + recorded walkthrough
 
-**Done when:** every row of the README results table comes from a real run; the dashboard shows real traffic.
+### M7: deploy (Nov 16–22)
+- [ ] AWS Lightsail or small EC2, `docker compose`, TLS reverse proxy, secrets from env; ≤ US$15/month (budget alarm)
+- [ ] Production smoke evals against the deployed URL; spend cap verified live
+- [ ] Final README pass with the live URL; buffer for M1–M6 slippage
 
 ---
 
 ## 4. Budget and what to cut
 
-The full scope plus the SPEC rebuild comes to about 125 h; the budget is 72–90 h. **Already cut** (reflected above):
+About 110 h over 7 weeks against 84–105 h. **Already cut:** the thin UI and model routing (deferred), Langfuse (a stretch goal after the project), a 60-question golden set, and no sentiment extraction. If we slip further, cut in this order:
+1. The reranker (−2 h; report hybrid-only recall)
+2. MLflow reduced to local file-store autolog (−1.5 h)
+3. News features for Premier League clubs only (−2 h)
 
-| Cut | Saves | Why |
-|---|---|---|
-| Thin UI deferred until after M6 | ~8 h | SPEC: thin UI only; the API, MCP and evals show more per hour |
-| Cloud deploy → local `docker compose` demo + recording | ~4 h | No hosting cost; deploy-ready images stay |
-| Model routing deferred | ~1.5 h | Needs traffic to justify; single model with prompt caching first |
-| Tracing and dashboard in Postgres, not Langfuse | ~3 h | No new service |
-| Golden set of 60, not 100 | ~1.5 h | Grows later |
-| Sentiment dropped from extraction | ~1 h | Least reliable, most exposed to hindsight |
-
-That leaves **~100 h**, still 10+ h over even at 15 h/week. The next cuts, in order: (1) reranker (−2 h, report hybrid-only recall); (2) MLflow reduced to local file-store autolog (−1.5 h); (3) news features limited to Premier League clubs (−2 h of linking work, which matches where the Guardian's coverage is anyway). At 12 h/week, **add a 7th week (Nov 16–22)** rather than cut the evals or the security work. Deferred items (cloud deploy, model routing, thin UI) go into that week or later.
+The evals, security work and deploy are protected.
 
 ---
 
@@ -221,21 +233,4 @@ That leaves **~100 h**, still 10+ h over even at 15 h/week. The next cuts, in or
 
 ## 6. Open questions
 
-Answered by SPEC.md: the target definition, data license (CC0, so a CI fixture sample can be committed), population, split and success criteria.
-
-Still open:
-1. **New dependencies and services.** Approve or reject each:
-   - `mlflow`
-   - MAPIE, or numpy conformal (recommended)
-   - `anthropic` SDK
-   - `mcp` SDK
-   - `pre-commit` + gitleaks
-   - CodeQL or Semgrep
-   - Postgres tracing (recommended) or Langfuse/LangSmith
-2. **Embeddings provider:** Voyage AI (external API) or local `sentence-transformers` (large dependency).
-3. **Local demo instead of cloud deploy.** OK? If you want a cloud deploy: host, monthly budget, daily LLM spend cap.
-4. **Eval thresholds** in CLAUDE.md. Confirm or change them.
-5. **Your labeling time:** about 1.5 h for 100 links (M3) + about 2.5 h for 50 judge answers (M5).
-6. **Is the GitHub repo public?** It decides whether CodeQL is free.
-7. **Guardian terms:** if storing bodies/embeddings isn't allowed, is "derived signals + URL only" acceptable?
-8. **Budget:** approve the cut list in §4 and the optional 7th week?
+All questions from the first draft were answered on 2026-09-29 (see §0.1). Still pending on your side: whether the Guardian terms allow LLM processing and stored embeddings. M3–M4 are built so either can be switched off.
