@@ -66,3 +66,5 @@ Key modules: `scout/data/snapshots.py` (population, club at t, target), `scout/m
 - Simple, readable code over clever abstractions.
 - Never delete or overwrite raw data or trained models.
 - After each milestone, update the README with what was built and how to run it.
+- At each milestone review, and whenever a significant decision, experiment or negative result happens, append an entry to docs/RESEARCH_LOG.md.
+- Every change goes through a pull request (`gh pr create`); merge only after all required checks pass. Branches are deleted on merge; `main` has no bypass.

@@ -27,6 +27,8 @@ to rise or fall in value.
   Record the download date and file hash for reproducibility.
 - News (features + RAG): The Guardian Open Platform API, under these rules:
   - Persist only article IDs, URLs, dates, tags and extracted signals.
+  - Headlines are article content: never stored (the 24-hour rule applies). Text search
+    without article text uses tags plus keywords from the URL slug.
   - Never persist article text beyond 24 hours: a purge job, plus a test that
     proves it.
   - Fetch text live when an answer or citation needs it; cache it for at most
@@ -67,6 +69,12 @@ to rise or fall in value.
 - Live demo predictions use data as of 12 June 2026, the last valuation date.
 
 ## Future work (v2)
+- **Prospects model (candidate experiment).** The v1 population's 450-minute rule
+  excludes 60% of under-22 candidates, and those players rise most when revalued
+  (+0.54 log on average vs +0.32 for under-22s kept; `reports/m2_excluded.md`).
+  A separate model for under-22s with a lower minutes threshold, and its own
+  untouched test split, would test whether breakout prospects are predictable.
+  The v1 population stays as defined above.
 - A focused experiment with **StatsBomb open data**: for the competitions and
   seasons it covers, test whether detailed event data (passes, pressures,
   duels) improves predictions for defenders and midfielders, whose value is
