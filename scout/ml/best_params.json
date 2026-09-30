@@ -7,5 +7,5 @@
   },
   "ridge_alpha": 100.0,
   "chosen_by": "mean rolling-origin CV MAE, 2016-2021",
-  "commit": "afb3689-dirty"
+  "commit": "64a7937"
 }

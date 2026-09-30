@@ -144,7 +144,7 @@ def main() -> None:
     for name, t in tables.items():
         lines += [f"### By {name}", "", md_table(t), ""]
     REPORT.write_text("\n".join(lines), encoding="utf-8")
-    print("\n".join(lines))
+    print(f"wrote {REPORT} and {BEST}")
 
 
 if __name__ == "__main__":
