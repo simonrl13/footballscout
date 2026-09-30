@@ -10,9 +10,10 @@ URL = os.environ.get("READER_DATABASE_URL")
 
 def _connect(url):
     try:
-        return psycopg.connect(url, connect_timeout=3)
+        conn = psycopg.connect(url, connect_timeout=3)
     except psycopg.OperationalError:
-        pytest.skip("database not reachable")
+        pytest.skip("database not reachable")  # raises, so conn is always bound below
+    return conn
 
 
 pytestmark = pytest.mark.skipif(not URL, reason="READER_DATABASE_URL not set")

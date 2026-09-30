@@ -14,8 +14,8 @@ def test_split_years_are_disjoint_and_ordered():
 
 def test_train_module_never_evaluates_the_test_set():
     import inspect
-    import scout.ml.train as train
-    src = inspect.getsource(train.main)
+    from scout.ml.train import main
+    src = inspect.getsource(main)
     assert "TEST_YEARS" in src and "assert not df.year.isin(TEST_YEARS).any()" in src
     assert "evaluate_test" not in src
 

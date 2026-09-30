@@ -57,7 +57,8 @@ def mae_diff_ci(y, p_model, p_base, n_boot=1000, seed=0):
     rng = np.random.default_rng(seed)
     d = np.abs(np.asarray(p_model) - y) - np.abs(np.asarray(p_base) - y)
     boots = [d[rng.integers(0, len(d), len(d))].mean() for _ in range(n_boot)]
-    return d.mean(), *np.percentile(boots, [2.5, 97.5])
+    lo, hi = np.percentile(boots, [2.5, 97.5])
+    return d.mean(), lo, hi
 
 
 def linear_model():
