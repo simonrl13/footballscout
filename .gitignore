@@ -8,3 +8,5 @@ data/raw/*
 models/
 node_modules/
 .next/
+mlartifacts/
+mlruns/

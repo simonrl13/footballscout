@@ -48,3 +48,19 @@ def test_explain_shap_values_add_up_to_prediction():
         assert np.isclose(e["predicted_log_change"], p)
         assert np.isclose(e["base_value"] + sum(f["shap"] for f in e["factors"]), p)
     assert out[0]["factors"][0]["feature"] in {"age", "league"}
+
+
+def test_explain_returns_interval_containing_quantile_band():
+    rng = np.random.default_rng(1)
+    n = 400
+    X = pd.DataFrame({c: rng.normal(size=n) for c in NUMERIC})
+    for c in CATEGORICAL:
+        X[c] = rng.choice(["a", "b"], size=n)
+    y = X.age + rng.normal(scale=0.3, size=n)
+    fit = lambda **kw: lgb.LGBMRegressor(n_estimators=30, verbose=-1, **kw).fit(to_model_input(X), y).booster_
+    model, q_lo, q_hi = fit(), fit(objective="quantile", alpha=0.1), fit(objective="quantile", alpha=0.9)
+    out = explain(X.head(3), model, interval=(q_lo, q_hi, 0.05))
+    for e, lo, hi in zip(out, q_lo.predict(to_model_input(X.head(3))), q_hi.predict(to_model_input(X.head(3)))):
+        iv = e["interval_80"]
+        assert iv["low_log_change"] <= iv["high_log_change"]
+        assert np.isclose(iv["low_log_change"], min(lo, hi) - 0.05) and np.isclose(iv["high_log_change"], max(lo, hi) + 0.05)

@@ -1,0 +1,11 @@
+{
+  "lightgbm": {
+    "objective": "l1",
+    "num_leaves": 7,
+    "min_child_samples": 50,
+    "n_estimators": 600
+  },
+  "ridge_alpha": 100.0,
+  "chosen_by": "mean rolling-origin CV MAE, 2016-2021",
+  "commit": "afb3689-dirty"
+}
