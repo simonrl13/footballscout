@@ -8,19 +8,21 @@ import pytest
 URL = os.environ.get("READER_DATABASE_URL")
 
 
-def _connect(url):
+def _reachable() -> bool:
+    if not URL:
+        return False
     try:
-        conn = psycopg.connect(url, connect_timeout=3)
+        psycopg.connect(URL, connect_timeout=3).close()
+        return True
     except psycopg.OperationalError:
-        pytest.skip("database not reachable")  # raises, so conn is always bound below
-    return conn
+        return False
 
 
-pytestmark = pytest.mark.skipif(not URL, reason="READER_DATABASE_URL not set")
+pytestmark = pytest.mark.skipif(not _reachable(), reason="READER_DATABASE_URL not set or database not reachable")
 
 
 def test_reader_can_read_loaded_tables():
-    with _connect(URL) as conn:
+    with psycopg.connect(URL, connect_timeout=5) as conn:
         n = conn.execute("SELECT count(*) FROM player_valuations").fetchone()[0]
     assert n > 0
 
@@ -33,7 +35,7 @@ def test_reader_can_read_loaded_tables():
     "DROP TABLE games",
 ])
 def test_reader_cannot_write_or_change_schema(stmt):
-    with _connect(URL) as conn:
+    with psycopg.connect(URL, connect_timeout=5) as conn:
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             conn.execute(stmt)
         conn.rollback()
