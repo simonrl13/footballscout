@@ -142,7 +142,7 @@ Effort: S = up to 3 h, M = 3–8 h, L = more than 8 h.
 - [x] Features: age, position, league, log value, 12m value change, previous-season minutes / apps / G+A per 90, share of team minutes, squad value as of t, club moves in last 12m
 - [x] Leakage tests for every feature (append future rows → no change) + a real-data truncation test (skipped when the CSVs are absent)
 - [x] Split 2013–2021 / 2022 / 2023–24; baselines no-change + linear (age-only as an extra reference); LightGBM; expanding-window backtest by year on 2016–2022 (never touches test)
-- [ ] `train.py` prints no test metrics; `scout/ml/evaluate_test.py --confirm-test --reason ...` appends to `docs/TEST_LOG.md`; one M1 test run
+- [x] `train.py` prints no test metrics; `scout/ml/evaluate_test.py --confirm-test --reason ...` appends to `docs/TEST_LOG.md`; one M1 test run (2026-09-30, commit `3a8c31e`: LightGBM beats no-change, ties linear)
 - [x] One command: `uv run python -m scout.pipeline` (load → features → train → evaluate on val)
 - [ ] (code done; **verification pending Docker**) Postgres bound to 127.0.0.1; `.env` / `.env.example`; roles `scout_loader` (write) and `scout_reader` (read-only, API/agent); `load.py` allow-lists CSV columns and uses `sql.Identifier`
 - [x] `.claude/settings.json` deny rules; pre-commit + gitleaks; GitHub Actions (pytest, pip-audit, gitleaks); Dependabot; `SECURITY.md` skeleton with the Guardian rules

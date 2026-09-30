@@ -64,7 +64,7 @@ The valuation's `current_club_id` is point-in-time, despite its name. It changes
 - Synthetic: [tests/test_features.py](tests/test_features.py) adds valuations, transfers, appearances and games dated on or after the snapshot, and the snapshot and every feature must stay identical.
 - Real data: [tests/test_leakage_real.py](tests/test_leakage_real.py) rebuilds 2014, 2020 and 2023 with every table truncated at 1 September, and the results must match the full build.
 
-## Results so far (validation and backtest; M1)
+## Results (M1)
 Validation, 2022 snapshots (2,406). Full tables in [reports/m1_results.md](reports/m1_results.md):
 
 | Model | MAE (log change) | RMSE | Direction acc. |
@@ -76,7 +76,19 @@ Validation, 2022 snapshots (2,406). Full tables in [reports/m1_results.md](repor
 
 LightGBM minus linear, MAE: −0.0049 (bootstrap 95% CI −0.0087 to −0.0008). The gain over the linear baseline is small but real; the gain over "no change" is large (−0.060).
 
-In the expanding-window backtest (2016–2022), LightGBM has the lowest MAE in 5 of 7 years. 2018 is a near-tie with linear (0.376 vs 0.375), and it is **worse than age-only and linear for 2019**, the snapshots whose target lands in the COVID markdown. Test-set results (2023–2024) are in [reports/test_results.md](reports/test_results.md) once the milestone's single test run is logged in [docs/TEST_LOG.md](docs/TEST_LOG.md).
+In the expanding-window backtest (2016–2022), LightGBM has the lowest MAE in 5 of 7 years. 2018 is a near-tie with linear (0.376 vs 0.375), and it is **worse than age-only and linear for 2019**, the snapshots whose target lands in the COVID markdown. **Test set, 2023–2024 snapshots (4,294)**: the single M1 run, logged in [docs/TEST_LOG.md](docs/TEST_LOG.md), with details in [reports/test_results.md](reports/test_results.md):
+
+| Model | MAE | RMSE | Direction acc. |
+|---|---|---|---|
+| No change | 0.410 | 0.551 | n/a |
+| Age-only | 0.367 | 0.496 | 69.3% |
+| Linear (ridge) | 0.359 | 0.483 | 70.1% |
+| LightGBM | 0.359 | 0.482 | 70.4% |
+
+- LightGBM **beats no-change** (MAE −0.052, CI −0.058 to −0.045).
+- It **does not beat the linear baseline**: −0.0002, CI −0.0032 to +0.0030. Linear is better in 2023 and LightGBM in 2024.
+- So the SPEC's success criterion is met for "no change" but **not yet for linear**. With these baseline features the relationships are close to linear in log space (age, value level, momentum, squad value). The planned news features (M3) are the test of whether non-linear signal exists.
+- Nothing will be tuned against these test numbers.
 
 ## Test-set discipline
 The test set is evaluated at most once per milestone, only by `scout/ml/evaluate_test.py`, and every run is logged with date, commit and reason. **Disclosure:** in the earlier v0 design (Phase 2), the v0 test metrics were printed on every training run and viewed 4 times. No feature, hyperparameter or model decision was based on them; the only change made after viewing was switching the age-only baseline from median to mean, because of a metric artifact visible in validation too. v0 was then replaced by the SPEC design, with new splits.
