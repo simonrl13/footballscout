@@ -7,7 +7,6 @@ Writes models/<run_id>/ (never overwrites) and reports/m2_results.md.
 Usage: uv run --env-file .env python -m scout.ml.train
 """
 import json
-import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -20,7 +19,7 @@ from sklearn.linear_model import Ridge
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-from scout.data.manifest import MANIFEST
+from scout.data.manifest import MANIFEST, git_commit  # noqa: F401 (re-exported)
 from scout.data.raw import read_raw
 from scout.data.snapshots import build_snapshots
 from scout.ml.features import CATEGORICAL, FEATURES, NUMERIC, build_features
@@ -91,12 +90,6 @@ def fit_predictors(train: pd.DataFrame) -> dict:
         "LightGBM": lambda d: gbm.predict(to_model_input(d)),
         "_booster": gbm.booster_,
     }
-
-
-def git_commit() -> str:
-    sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=ROOT).stdout.strip()
-    dirty = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, cwd=ROOT).stdout.strip()
-    return sha + ("-dirty" if dirty else "")
 
 
 def md_table(df: pd.DataFrame, fmt="{:.3f}") -> str:

@@ -5,12 +5,20 @@ Usage: uv run python -m scout.data.manifest --record 2026-09-23   # (re)write af
 import argparse
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 RAW = ROOT / "data" / "raw"
 MANIFEST = ROOT / "data" / "manifest.json"
 FILES = ["players", "player_valuations", "appearances", "games", "clubs", "competitions", "transfers"]
+
+
+def git_commit() -> str:
+    """Short HEAD commit, suffixed -dirty when the working tree has uncommitted changes."""
+    sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=ROOT).stdout.strip()
+    dirty = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, cwd=ROOT).stdout.strip()
+    return sha + ("-dirty" if dirty else "")
 
 
 def sha256(path: Path) -> str:

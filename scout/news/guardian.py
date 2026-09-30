@@ -15,15 +15,14 @@ DAILY_LIMIT = 500
 PAGE_SIZE = 200  # the API maximum
 # Dates only: never bodyText/body in the search call. Text is fetched per article, on demand (fetch_text).
 SEARCH_FIELDS = "firstPublicationDate,lastModified"
-_last_call = 0.0
+_clock = {"last_call": 0.0}  # monotonic time of the previous request (1 call/s)
 
 
 def _get(path: str, params: dict) -> dict:
-    global _last_call
     key = os.environ.get("GUARDIAN_API_KEY", "").strip()
     if not key:
         raise RuntimeError("GUARDIAN_API_KEY is not set in the environment (.env)")
-    wait = 1.0 - (time.monotonic() - _last_call)
+    wait = 1.0 - (time.monotonic() - _clock["last_call"])
     if wait > 0:
         time.sleep(wait)
     url = f"{API}/{path}?" + urllib.parse.urlencode({**params, "api-key": key})
@@ -32,7 +31,7 @@ def _get(path: str, params: dict) -> dict:
         with urllib.request.urlopen(req, timeout=30) as r:
             payload = json.load(r)
     finally:
-        _last_call = time.monotonic()
+        _clock["last_call"] = time.monotonic()
     resp = payload.get("response", {})
     if resp.get("status") != "ok":
         raise RuntimeError(f"Guardian API error: {resp.get('message', 'unknown')}")  # message never contains the key

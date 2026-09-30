@@ -16,8 +16,7 @@ EXPERIMENT = "scout-value-model"
 
 @contextmanager
 def start_run(run_name: str, tags: dict | None = None):
-    from scout.data.manifest import MANIFEST
-    from scout.ml.train import git_commit
+    from scout.data.manifest import MANIFEST, git_commit
 
     uri = os.environ.get("MLFLOW_TRACKING_URI") or f"sqlite:///{(ROOT / 'mlruns' / 'mlflow.db').as_posix()}"
     (ROOT / "mlruns").mkdir(exist_ok=True)
