@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
       - run: uv sync --frozen
       # Leakage tests on synthetic data always run; the real-data and DB tests skip without data/raw and a DB.
       - run: uv run pytest -q
@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
       - run: uv export --frozen --format requirements-txt --no-emit-project --all-groups -o requirements-audit.txt
       - run: uvx pip-audit -r requirements-audit.txt --disable-pip --strict
 
