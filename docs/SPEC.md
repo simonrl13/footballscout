@@ -66,6 +66,21 @@ to rise or fall in value.
   of test cases.
 - Live demo predictions use data as of 12 June 2026, the last valuation date.
 
+## Future work (v2)
+- A focused experiment with **StatsBomb open data**: for the competitions and
+  seasons it covers, test whether detailed event data (passes, pressures,
+  duels) improves predictions for defenders and midfielders, whose value is
+  least explained by goals and assists.
+- Design: match the StatsBomb players to our `player_id`s and build per-90
+  event features over the same "previous season" window. Compare the model
+  with and without them on the same snapshots, with errors by position and
+  season.
+- Openly licensed data only, used under StatsBomb's open-data user agreement.
+  No scraping. Follow StatsBomb's attribution requirements (credit StatsBomb
+  as the data source and show their logo wherever results based on the data
+  are published). Coverage is limited to specific competitions and seasons,
+  so report results only for what is covered.
+
 ## Out of scope
 Transfer fees, Brazilian and other calendar-year leagues (v2 candidate),
 women's and youth football, live data updates, betting use, model

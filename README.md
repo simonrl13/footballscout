@@ -1,77 +1,91 @@
-# Scout — Football Player Value Forecasting + Scouting Agent
+# Scout — football player value forecasting + scouting agent
 
-Forecasts 12-month Transfermarkt market-value changes with LightGBM + SHAP and exposes them through a Claude tool-calling agent with RAG over Guardian football news.
+Forecasts how a player's Transfermarkt market value will change over the next 12 months, with SHAP explanations. The model will be exposed through a Claude tool-calling agent with retrieval over Guardian football news (later milestones).
 
-> Values are Transfermarkt crowd estimates, not real transfer fees.
+> Values are Transfermarkt crowd-sourced estimates, **not transfer fees**.
+
+- Problem definition: [docs/SPEC.md](docs/SPEC.md) · Plan and status: [docs/PLAN.md](docs/PLAN.md) · Security: [SECURITY.md](SECURITY.md)
 
 ## Status
-- [x] Phase 0: scaffolding (Postgres + pgvector, FastAPI `/health`)
-- [x] Phase 1: data and target (Postgres load not yet run — needs Docker)
-- [x] Phase 2: features and model
-- [ ] Phase 3: news RAG
-- [ ] Phase 4: agent and API
-- [ ] Phase 5: frontend
+- [x] **M1** — data pipeline rebuilt to the SPEC, point-in-time features with leakage tests, baselines, test-set gate, reproducibility, DB roles, security gates
+- [ ] M2 — MLflow, 80% prediction intervals, Guardian metadata backfill
+- [ ] M3 — LLM-extracted news features · M4 — retrieval + agent · M5 — evals + MCP · M6 — ops · M7 — AWS deploy
 
-## Layout
-```
-scout/data    data loading + target        scout/ml     features, training, SHAP
-scout/news    Guardian ingestion + RAG      scout/agent  Claude agent loop
-scout/api     FastAPI app                   frontend/    Next.js (Phase 5)
-db/           SQL                           data/raw/    Kaggle CSVs (not committed)
-```
+## Problem (from the SPEC)
+- **Unit:** one player on **1 September** each year, 2013–2024.
+- **Population:**
+  - The player's club on 1 Sep plays in the Premier League, La Liga, Bundesliga, Serie A, Ligue 1, Eredivisie or Liga Portugal.
+  - The player had at least 450 league minutes in those leagues the previous season.
+- **Target:** `log(value as of next 1 Sep / value as of 1 Sep)`, each the latest valuation on or before that date. Kept only if the player was revalued in between, so a zero means "revalued, unchanged".
+- **Split:** train 2013–2021 · validation 2022 · test 2023–2024. Never random.
 
 ## Setup
-Requires [uv](https://docs.astral.sh/uv/) and Docker.
+Requires [uv](https://docs.astral.sh/uv/) and Docker Desktop. The Kaggle CSVs ([davidcariboo/player-scores](https://www.kaggle.com/datasets/davidcariboo/player-scores), CC0) go in `data/raw/`. They must match [data/manifest.json](data/manifest.json) (SHA-256), which is checked at load time.
 
 ```sh
-cp .env.example .env          # fill in keys when later phases need them
-uv sync                       # create .venv with deps
-docker compose up -d db       # Postgres 16 + pgvector
+uv sync                       # Python 3.12 + locked dependencies
+cp .env.example .env          # then replace every change-me
+uv run pre-commit install     # gitleaks secret scan on every commit
+docker compose up -d db       # Postgres 16 + pgvector, bound to 127.0.0.1
 ```
+On first start the database creates two roles (see [db/init/02-roles.sh](db/init/02-roles.sh)):
+- `scout_loader` creates and loads the tables.
+- `scout_reader` can only read them, and is the only role the API (and later the agent and MCP server) gets.
 
 ## Run
 ```sh
-# API locally (reads DATABASE_URL from your shell/.env)
-uv run --env-file .env uvicorn scout.api.main:app --reload
-# or everything in Docker
-docker compose up --build
-
-curl http://localhost:8000/health   # {"status":"ok","db":"ok"}
+uv run --env-file .env python -m scout.pipeline          # manifest check → Postgres load → data report → features → train → validation
+uv run python -m scout.pipeline --no-db                  # same, without the Postgres load
+uv run python -m scout.ml.evaluate_test --confirm-test --reason "..."   # the ONLY path to the test set; logged
+uv run pytest                                            # unit + leakage tests (DB tests: uv run --env-file .env pytest)
 ```
+Trained models go to `models/<run_id>/`, which is never overwritten; `models/LATEST` names the current run. Reports go to [reports/](reports/).
 
-## Data (Phase 1)
-1. Download the Kaggle dataset [davidcariboo/player-scores](https://www.kaggle.com/datasets/davidcariboo/player-scores) and extract the CSVs into `data/raw/`.
-2. Start Postgres and load everything, including the target table:
-   ```sh
-   docker compose up -d db
-   uv run --env-file .env python -m scout.data.load
-   ```
-   This recreates the tables from [db/schema.sql](db/schema.sql) (players, player_valuations, appearances, games, clubs, competitions, transfers) and builds `valuation_targets`.
-3. EDA: `uv run jupyter lab notebooks/01_eda.ipynb`. It reads the CSVs directly, so it doesn't need the database.
+## How the data is built (M1)
+**Club on 1 September.** The SPEC's plan was to rebuild club membership from `transfers`. That table turned out to be incomplete before about 2021: in the 2013 check, 77% of players had no transfer row at all. The club is instead the **most recent** of three point-in-time records dated on or before the snapshot: the last league appearance, the last transfer, and the club recorded on the last valuation. Matched against the club each player actually played for in the next 60 days ([reports/m1_data.md](reports/m1_data.md)):
 
-**Target:** `log(value_future / value_now)`, where `value_future` is the first valuation of the same player on or after t+335 days, kept only if it falls on or before t+425 days ([scout/data/target.py](scout/data/target.py)). The spec originally used t+365, but Transfermarkt revalues players about every 6 months, which left only 35% of snapshots. Starting the window at t+335 keeps 63% (377k snapshots).
+| Method | 2013 | 2016 | 2020 | 2022 | 2024 |
+|---|---|---|---|---|---|
+| Transfers only | 22% | 42% | 62% | 87% | 94% |
+| Last August appearance, then transfers | 80% | 83% | 66% | 94% | 95% |
+| **Most recent of appearance / transfer / valuation (used)** | **87%** | **91%** | **83%** | **98%** | **97%** |
 
-**Data caveats (see [db/schema.sql](db/schema.sql) comments):**
-- `players.contract_expiration_date` is the current contract only (37% missing). It is not point-in-time, so it can't be used as a historical feature.
-- `player_valuations.player_club_domestic_competition_id` is the club's current league, not its league at the valuation date. The club itself (`current_club_id`) is point-in-time.
-- `transfers.csv` contains dates up to 2030 (planned moves or loan ends).
-- The data ends 2026-06-12, so the test split (2024+) effectively means snapshots from the 2024 season.
+The valuation's `current_club_id` is point-in-time, despite its name. It changes across 90% of 73,697 transfers, showing the old club before and the new club after. In 2020 the transfer window stayed open until October, so some "misses" are real moves made after 1 September.
 
-## Model (Phase 2)
-Reads the CSVs in `data/raw/` directly, so it doesn't need Postgres.
-```sh
-uv run python -m scout.ml.train   # ~30 s: features, baselines, LightGBM, SHAP, report
-```
-- [scout/ml/features.py](scout/ml/features.py): point-in-time features (age, value, 6m momentum, minutes 6/12m + trend, goal contributions/90, league and club form at the snapshot date, position).
-- [scout/ml/train.py](scout/ml/train.py): time split (train < 2023-07, with training rows whose target resolves in the evaluation period purged; val 2023-24; test 2024-25+), baselines, LightGBM, report.
-- [scout/ml/model.py](scout/ml/model.py): `explain(features)` returns the prediction plus the top SHAP factors (LightGBM's built-in TreeSHAP). The trained model is saved to `models/lgbm.txt`, which is gitignored and regenerated by the command above.
-- Reports: [reports/evaluation.md](reports/evaluation.md) (write-up and case studies) and [reports/results.md](reports/results.md) (auto-generated).
+**Why the as-of target, not v0's fixed window.** Revaluations bunch in particular months, so v0's rule ("first valuation 335–425 days later") finds a value for only 7,855 of 28,260 annual snapshots (28%). The SPEC's as-of rule finds 27,330 (96.7%).
 
-Test set (2024-25): LightGBM MAE 0.394 / directional accuracy 73.0%, vs no-change 0.469, age-only 0.413 / 70.1%, linear 0.402 / 72.5%.
+**Features** ([scout/ml/features.py](scout/ml/features.py)):
+- age, position, league, log value on 1 Sep, value change over the previous 12 months
+- previous-season league minutes, appearances, goals + assists per 90, and share of the team's minutes
+- squad value on 1 Sep (as-of valuations of players at the club)
+- club moves in the last 12 months
 
-**Scope:** clubs in the 14 European leagues with match data since 2012-13, snapshots from July 2013 onward. The dataset's other 17 leagues only have match data from 2024-25.
+**Leakage tests:**
+- Synthetic: [tests/test_features.py](tests/test_features.py) adds valuations, transfers, appearances and games dated on or after the snapshot, and the snapshot and every feature must stay identical.
+- Real data: [tests/test_leakage_real.py](tests/test_leakage_real.py) rebuilds 2014, 2020 and 2023 with every table truncated at 1 September, and the results must match the full build.
 
-## Test
-```sh
-uv run pytest
-```
+## Results so far (validation and backtest; M1)
+Validation, 2022 snapshots (2,406). Full tables in [reports/m1_results.md](reports/m1_results.md):
+
+| Model | MAE (log change) | RMSE | Direction acc. |
+|---|---|---|---|
+| No change | 0.424 | 0.564 | n/a |
+| Age-only | 0.375 | 0.498 | 69.5% |
+| Linear (ridge) | 0.369 | 0.488 | 70.9% |
+| **LightGBM** | **0.364** | **0.482** | **71.3%** |
+
+LightGBM minus linear, MAE: −0.0049 (bootstrap 95% CI −0.0087 to −0.0008). The gain over the linear baseline is small but real; the gain over "no change" is large (−0.060).
+
+In the expanding-window backtest (2016–2022), LightGBM has the lowest MAE in 5 of 7 years. 2018 is a near-tie with linear (0.376 vs 0.375), and it is **worse than age-only and linear for 2019**, the snapshots whose target lands in the COVID markdown. Test-set results (2023–2024) are in [reports/test_results.md](reports/test_results.md) once the milestone's single test run is logged in [docs/TEST_LOG.md](docs/TEST_LOG.md).
+
+## Test-set discipline
+The test set is evaluated at most once per milestone, only by `scout/ml/evaluate_test.py`, and every run is logged with date, commit and reason. **Disclosure:** in the earlier v0 design (Phase 2), the v0 test metrics were printed on every training run and viewed 4 times. No feature, hyperparameter or model decision was based on them; the only change made after viewing was switching the age-only baseline from median to mean, because of a metric artifact visible in validation too. v0 was then replaced by the SPEC design, with new splits.
+
+## What changed from v0
+v0 (commit `aa607c0`, reports in [reports/v0/](reports/v0/)) used every valuation date as a snapshot, a 335–425-day target window, 14 leagues and a purged date split. It reached test MAE 0.394 vs 0.469 for no-change. The SPEC redesign moved to annual 1-September snapshots of established players, with club membership rebuilt point-in-time and no current-state columns. The numbers aren't directly comparable (a different population and target).
+
+## Data caveats
+- Transfermarkt values are crowd estimates, and collection stopped in July 2026 (valuations end 2026-06-12).
+- `position` is each player's current position, applied to all years.
+- Club reconstruction is 83–98% accurate by year (see above); 2013, 2014 and 2020 are the weakest.
+- Survivorship: a target requires a revaluation within the year, so players who drop out of coverage are underrepresented.

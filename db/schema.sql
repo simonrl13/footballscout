@@ -112,8 +112,8 @@ CREATE TABLE appearances (
 );
 CREATE INDEX ON appearances (player_id, date);
 
--- current_club_id is point-in-time (club at valuation date);
--- player_club_domestic_competition_id is that club's CURRENT league, not the league at `date`.
+-- current_club_id is point-in-time: the club at the valuation date (checked in reports/m1_data.md).
+-- player_club_domestic_competition_id is that club's CURRENT league, not the league at `date`: never use it.
 CREATE TABLE player_valuations (
     player_id                           integer NOT NULL,
     date                                date NOT NULL,
@@ -138,14 +138,3 @@ CREATE TABLE transfers (
     player_name         text
 );
 CREATE INDEX ON transfers (player_id, transfer_date);
-
--- Target: log(value_future / value_now), value_future = first valuation in [date+335, date+425].
-CREATE TABLE valuation_targets (
-    player_id    integer NOT NULL,
-    date         date NOT NULL,
-    value_now    bigint NOT NULL,
-    future_date  date NOT NULL,
-    value_future bigint NOT NULL,
-    target       double precision NOT NULL,
-    PRIMARY KEY (player_id, date)
-);

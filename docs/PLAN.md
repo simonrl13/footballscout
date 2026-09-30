@@ -134,19 +134,19 @@ Effort: S = up to 3 h, M = 3–8 h, L = more than 8 h.
 | **Total** | | **~110** | vs 84–105 h over 7 weeks (see §4) |
 
 ### M1: rebuild to the SPEC (Sep 29–Oct 11; Docker is already running)
-- [ ] `data/manifest.json` (download date + SHA-256 per CSV), checked at load time
-- [ ] Python 3.12 locally (`.python-version`) and in Docker; `uv sync --frozen`
-- [ ] Club at t from transfers (ignore rows after the data cut-off); match rate per year against the club the player appeared for in the next 60 days; fallback method (last August league appearance, then transfers) measured too; stop and ask only if the fallback is also below 90%
-- [ ] Annual snapshots (1 Sep, 2013–2024): current value = latest valuation ≤ t; target = latest valuation ≤ next 1 Sep; keep only if ≥ 1 new valuation in between. Counts per year under the as-of target **and** the v0 335–425 window.
-- [ ] Population: club in the 7 leagues at t; ≥ 450 league minutes in those leagues in the previous season
-- [ ] Features: age, position, league, log value, 12m value change, previous-season minutes / apps / G+A per 90, share of team minutes, squad value as of t, club moves in last 12m
-- [ ] Leakage tests for every feature (append future rows → no change) + a real-data truncation test (skipped when the CSVs are absent)
-- [ ] Split 2013–2021 / 2022 / 2023–24; baselines no-change + linear (age-only as an extra reference); LightGBM; expanding-window backtest by year on 2016–2022 (never touches test)
+- [x] `data/manifest.json` (download date + SHA-256 per CSV), checked at load time
+- [x] Python 3.12 locally (`.python-version`) and in Docker; `uv sync --frozen`
+- [x] Club at t: transfers alone 22–98% and the August fallback 66–96% both failed 90% → asked → **most recent of league appearance / transfer / valuation club** (83–98%; 2013, 2014 and 2020 below 90%, accepted and flagged). The valuation club was verified as point-in-time (changes across 90% of 73,697 transfers). See `reports/m1_data.md`.
+- [x] Annual snapshots (1 Sep, 2013–2024): current value = latest valuation ≤ t; target = latest valuation ≤ next 1 Sep; keep only if ≥ 1 new valuation in between. Counts per year under the as-of target **and** the v0 335–425 window.
+- [x] Population: club in the 7 leagues at t; ≥ 450 league minutes in those leagues in the previous season
+- [x] Features: age, position, league, log value, 12m value change, previous-season minutes / apps / G+A per 90, share of team minutes, squad value as of t, club moves in last 12m
+- [x] Leakage tests for every feature (append future rows → no change) + a real-data truncation test (skipped when the CSVs are absent)
+- [x] Split 2013–2021 / 2022 / 2023–24; baselines no-change + linear (age-only as an extra reference); LightGBM; expanding-window backtest by year on 2016–2022 (never touches test)
 - [ ] `train.py` prints no test metrics; `scout/ml/evaluate_test.py --confirm-test --reason ...` appends to `docs/TEST_LOG.md`; one M1 test run
-- [ ] One command: `uv run python -m scout.pipeline` (load → features → train → evaluate on val)
-- [ ] Postgres bound to 127.0.0.1; `.env` / `.env.example`; roles `scout_loader` (write) and `scout_reader` (read-only, API/agent); `load.py` allow-lists CSV columns and uses `sql.Identifier`
-- [ ] `.claude/settings.json` deny rules; pre-commit + gitleaks; GitHub Actions (pytest, pip-audit, gitleaks); Dependabot; `SECURITY.md` skeleton with the Guardian rules
-- [ ] Trained models written to new versioned paths (`models/<run_id>/`); never overwrite `models/lgbm.txt` (v0)
+- [x] One command: `uv run python -m scout.pipeline` (load → features → train → evaluate on val)
+- [ ] (code done; **verification pending Docker**) Postgres bound to 127.0.0.1; `.env` / `.env.example`; roles `scout_loader` (write) and `scout_reader` (read-only, API/agent); `load.py` allow-lists CSV columns and uses `sql.Identifier`
+- [x] `.claude/settings.json` deny rules; pre-commit + gitleaks; GitHub Actions (pytest, pip-audit, gitleaks); Dependabot; `SECURITY.md` skeleton with the Guardian rules
+- [x] Trained models written to new versioned paths (`models/<run_id>/`); never overwrite `models/lgbm.txt` (v0)
 
 **Done when:** one command rebuilds everything from the raw CSVs; club match rates are reported per year; every feature has a leakage test; the test set has been evaluated exactly once and logged; CI is green.
 **Risks:**

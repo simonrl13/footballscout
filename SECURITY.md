@@ -43,7 +43,12 @@ Please don't open a public issue. Use GitHub's private vulnerability reporting o
 - LLM processing of article text (`NEWS_LLM_ENABLED`) and stored embeddings (`EMBEDDINGS_ENABLED`) can each be switched off, pending confirmation of the terms.
 
 ## What is tested and how
-To be filled in as controls land (M1: leakage tests, gitleaks planted-key check; M5: read-only role test, injection evals).
+- **Secrets (M1):** gitleaks runs as a pre-commit hook and in CI over the full git history. Verified 2026-09-30 by staging a planted, randomly generated `ghp_…` token: the commit was blocked (rule `github-pat`). The file was then removed and never committed.
+- **Dependencies (M1):** `pip-audit --strict` over the locked requirements (local run 2026-09-30: no known vulnerabilities) runs in CI on every push and PR. Dependabot covers `uv` and GitHub Actions weekly.
+- **SQL (M1):** `load.py` rejects any CSV column not present in the table created by `db/schema.sql` and builds identifiers with `psycopg.sql.Identifier`; no SQL is built with f-strings.
+- **DB roles (M1, runs when the DB is up):** `tests/test_db.py` checks that `scout_reader` can read but gets `InsufficientPrivilege` for INSERT, UPDATE, DELETE, CREATE and DROP.
+- **Claude Code guardrails (M1):** `.claude/settings.json` denies reading or editing `.env` files and key files, and requires approval for package installs and network commands. This is a guardrail for the coding assistant, not a hard boundary: the deny list can't cover every shell command that could print a file.
+- M5 adds prompt-injection evals and agent-level read-only tests.
 
 ## Known limitations
 To be filled in (M6).

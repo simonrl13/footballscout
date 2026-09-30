@@ -16,18 +16,19 @@ Approved dependencies (others need approval): `mlflow`, `anthropic`, `mcp`, `voy
 ## Run
 ```sh
 uv sync
-uv run pytest                                     # unit + leakage tests
-docker compose up -d db                           # Postgres + pgvector
-uv run --env-file .env python -m scout.data.load  # CSVs -> Postgres
-uv run python -m scout.ml.train                   # features, baselines, model, report
+uv run pytest                                            # unit + leakage tests (DB tests: uv run --env-file .env pytest)
+docker compose up -d db                                  # Postgres + pgvector on 127.0.0.1; roles created on first start
+uv run --env-file .env python -m scout.pipeline          # manifest → load (scout_loader) → data report → features → train → validation
+uv run python -m scout.pipeline --no-db                  # same without Postgres
+uv run python -m scout.ml.evaluate_test --confirm-test --reason "..."   # test set: once per milestone, clean tree, logged
 ```
-The code at commit `aa607c0` is "v0" (per-valuation snapshots). M1 rebuilds it to the SPEC; update these commands then.
+Key modules: `scout/data/snapshots.py` (population, club at t, target), `scout/ml/features.py`, `scout/ml/train.py`, `scout/ml/evaluate_test.py`, `scout/ml/model.py` (`explain()`). v0 lives at commit `aa607c0` and `reports/v0/`.
 
 ## ML rules
 - **No feature may use data dated after its snapshot date.** Every feature gets a test that appends future data and asserts the features at t don't change. News counts only if `published_at < t`.
-- Never use current-state columns: current club, contract expiry, highest-ever value, club market value, international caps (`players.current_club_*`, `players.contract_expiration_date`, `players.highest_market_value_in_eur`, `clubs.*`, `player_valuations.player_club_domestic_competition_id`). Rebuild club membership from `transfers` as of t (ignore rows dated after the data cut-off) and squad value from as-of valuations.
+- Never use current-state columns: current club, contract expiry, highest-ever value, club market value, international caps (`players.current_club_*`, `players.contract_expiration_date`, `players.highest_market_value_in_eur`, `clubs.*`, `player_valuations.player_club_domestic_competition_id`). Club at t = the most recent of last league appearance, last transfer and the club on the last valuation (`player_valuations.current_club_id` is point-in-time: the club at the valuation date), all on or before t; squad value from as-of valuations. See `reports/m1_data.md`.
 - Snapshots: 1 September, 2013–2024. Split: train 2013–2021, val 2022, test 2023–2024. Never random.
-- **The test set is evaluated once per milestone** (`--final`, logged). Tune and select on val only.
+- **The test set is evaluated once per milestone** (`evaluate_test.py`, logged in `docs/TEST_LOG.md`). Tune and select on val only.
 - Always report against the no-change and linear baselines, by snapshot year as well as overall.
 - If the data doesn't match an assumption, stop and ask instead of guessing.
 

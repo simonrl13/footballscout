@@ -7,12 +7,14 @@ import pandas as pd
 
 from scout.ml.features import CATEGORICAL, FEATURES
 
-MODEL_PATH = Path(__file__).resolve().parents[2] / "models" / "lgbm.txt"
+MODELS = Path(__file__).resolve().parents[2] / "models"
 
 
 @lru_cache(maxsize=1)
-def load_model() -> lgb.Booster:
-    return lgb.Booster(model_file=str(MODEL_PATH))
+def load_model(run_id: str | None = None) -> lgb.Booster:
+    """Load models/<run_id>/lgbm.txt; defaults to the run named in models/LATEST."""
+    run_id = run_id or (MODELS / "LATEST").read_text().strip()
+    return lgb.Booster(model_file=str(MODELS / run_id / "lgbm.txt"))
 
 
 def to_model_input(X: pd.DataFrame) -> pd.DataFrame:

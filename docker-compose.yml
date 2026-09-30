@@ -2,10 +2,10 @@ services:
   db:
     image: pgvector/pgvector:pg16
     env_file: .env
-    ports: ["5432:5432"]
+    ports: ["127.0.0.1:5432:5432"]  # never exposed beyond this machine
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -13,10 +13,10 @@ services:
 
   api:
     build: .
-    env_file: .env
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-    ports: ["8000:8000"]
+      # the API only ever gets the read-only role
+      READER_DATABASE_URL: postgresql://scout_reader:${SCOUT_READER_PASSWORD}@db:5432/${POSTGRES_DB}
+    ports: ["127.0.0.1:8000:8000"]
     depends_on:
       db: { condition: service_healthy }
 

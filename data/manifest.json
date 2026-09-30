@@ -1,0 +1,13 @@
+{
+  "source": "https://www.kaggle.com/datasets/davidcariboo/player-scores (CC0-1.0)",
+  "download_date": "2026-09-23",
+  "files": {
+    "players": "b94216cf2ff8777b5eddd4fd91402c19e757b366fbdeb4f4437580c302ff2d66",
+    "player_valuations": "9caf4ff707905f71463a04253c5ac640b3ff9575e07912fd7c50365697efa47d",
+    "appearances": "c4ba5327f9005e4a9914c0f78c3b07132ef2cf1a4babda379bbf54ffd207ebec",
+    "games": "c24da068cc7444e1e345c274d8d2320226cafc02186a17de2cf766eccb8ae79b",
+    "clubs": "26dc6113d8206246145add2c7a318a657b3995fccdb0c9004d65ca6ae5e5968b",
+    "competitions": "fadaf2992e01f8450d8d419006b0f533bbd6742163f4a0c5ee6a157fae7b791e",
+    "transfers": "5331311c6ec68c2c7a9c22979aff7d6f6fd2cefd96201d1bcfb35998a9d244ae"
+  }
+}
