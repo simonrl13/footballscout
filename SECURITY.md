@@ -1,6 +1,6 @@
 # Security
 
-Status: **skeleton (M1)**. This file is completed in M6 and updated whenever the attack surface changes (a new endpoint, tool or data source).
+Status: **partial (M2)**. This file is completed in M6 and updated whenever the attack surface changes (a new endpoint, tool or data source).
 
 ## Reporting a vulnerability
 Please don't open a public issue. Use GitHub's private vulnerability reporting on this repository ("Security" tab → "Report a vulnerability"). You should get a reply within 7 days.
@@ -26,7 +26,9 @@ Please don't open a public issue. Use GitHub's private vulnerability reporting o
 | Postgres bound to 127.0.0.1; password from `.env` | M1 | — |
 | DB roles: `scout_loader` (write) and `scout_reader` (read-only, used by the API, agent and MCP) | M1 (test in M5) | LLM06, ASI03 |
 | Parameterized SQL; identifiers via `psycopg.sql.Identifier`; CSV columns allow-listed against the schema | M1 | LLM05, ASI02 |
-| Lockfile, pip-audit, Dependabot, CodeQL (once the repo is public); new dependencies need approval + registry vetting | M1–M2 | LLM03, ASI04 |
+| Lockfile, pip-audit, Dependabot (uv, Actions, Docker), CodeQL (python + actions); Actions pinned by commit SHA and Docker images by digest; new dependencies need approval + registry vetting | M1–M2 | LLM03, ASI04 |
+| Ruleset on `main`: no force-push/deletion; tests, audit, secrets and CodeQL must pass; CodeQL high-severity alerts block merges (admins can bypass for direct pushes) | M2 | LLM03 |
+| MLflow in its own database with its own role (`scout_mlflow`), no access to project data | M2 | LLM06 |
 | Pydantic validation and limits on every endpoint and tool | M4 | LLM06, ASI02 |
 | Retrieved news treated as untrusted data; injection eval cases; attempts logged | M4–M5 | LLM01, ASI01, ASI06 |
 | Numbers in answers must come from tool outputs (post-check, violations logged) | M4 | LLM09, ASI09 |
@@ -48,7 +50,16 @@ Please don't open a public issue. Use GitHub's private vulnerability reporting o
 - **SQL (M1):** `load.py` rejects any CSV column not present in the table created by `db/schema.sql` and builds identifiers with `psycopg.sql.Identifier`; no SQL is built with f-strings.
 - **DB roles (M1, runs when the DB is up):** `tests/test_db.py` checks that `scout_reader` can read but gets `InsufficientPrivilege` for INSERT, UPDATE, DELETE, CREATE and DROP.
 - **Claude Code guardrails (M1):** `.claude/settings.json` denies reading or editing `.env` files and key files, and requires approval for package installs and network commands. This is a guardrail for the coding assistant, not a hard boundary: the deny list can't cover every shell command that could print a file.
+- **Guardian rules (M2):** `tests/test_news.py`:
+  - stored rows contain no article text, even when the API returns it;
+  - text older than 24 h is never returned and is deleted by the purge;
+  - the daily call budget can't be exceeded;
+  - the backfill resumes without re-fetching.
+- **CodeQL (M2):** first scan found 10 alerts (3 medium supply-chain: Actions pinned by tag; 7 code quality). All fixed; 0 open.
 - M5 adds prompt-injection evals and agent-level read-only tests.
 
 ## Known limitations
-To be filled in (M6).
+- The owner can bypass the `main` ruleset for direct pushes, so its checks bind PRs (incl. Dependabot) and are not a hard gate on the owner's pushes.
+- The 24-hour text cache is written with the loader role for now. M4 adds a narrow writer role before any public endpoint can trigger text fetches.
+- `.claude/settings.json` guards the coding assistant, not the machine: shell commands outside its deny list could still read `.env`.
+- The rest is completed in M6.

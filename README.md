@@ -8,7 +8,7 @@ Forecasts how a player's Transfermarkt market value will change over the next 12
 
 ## Status
 - [x] **M1** — data pipeline rebuilt to the SPEC, point-in-time features with leakage tests, baselines, test-set gate, reproducibility, DB roles, security gates
-- [ ] M2 — MLflow, 80% prediction intervals, Guardian metadata backfill
+- [x] **M2** — MLflow tracking, validation-only tuning pass, 80% prediction intervals (split-conformal), excluded-share report, Guardian metadata client *(live backfill waits for an API key)*
 - [ ] M3 — LLM-extracted news features · M4 — retrieval + agent · M5 — evals + MCP · M6 — ops · M7 — AWS deploy
 
 ## Problem (from the SPEC)
@@ -36,8 +36,12 @@ On first start the database creates two roles (see [db/init/02-roles.sh](db/init
 ```sh
 uv run --env-file .env python -m scout.pipeline          # manifest check → Postgres load → data report → features → train → validation
 uv run python -m scout.pipeline --no-db                  # same, without the Postgres load
-uv run python -m scout.ml.evaluate_test --confirm-test --reason "..."   # the ONLY path to the test set; logged
-uv run pytest                                            # unit + leakage tests (DB tests: uv run --env-file .env pytest)
+uv run --env-file .env python -m scout.ml.tune           # validation-only tuning pass (~8 min) → scout/ml/best_params.json
+uv run --env-file .env python -m scout.ml.evaluate_test --confirm-test --reason "..."   # the ONLY path to the test set; logged
+uv run --env-file .env python -m scout.ml.tracking       # MLflow UI on http://127.0.0.1:5000
+uv run --env-file .env python -m scout.news.backfill --max-calls 50   # Guardian metadata (needs GUARDIAN_API_KEY)
+uv run --env-file .env python -m scout.news.store        # purge cached article text older than 24 h
+uv run --env-file .env pytest                            # all tests (DB tests skip without the DB)
 ```
 Trained models go to `models/<run_id>/`, which is never overwritten; `models/LATEST` names the current run. Reports go to [reports/](reports/).
 
@@ -64,31 +68,42 @@ The valuation's `current_club_id` is point-in-time, despite its name. It changes
 - Synthetic: [tests/test_features.py](tests/test_features.py) adds valuations, transfers, appearances and games dated on or after the snapshot, and the snapshot and every feature must stay identical.
 - Real data: [tests/test_leakage_real.py](tests/test_leakage_real.py) rebuilds 2014, 2020 and 2023 with every table truncated at 1 September, and the results must match the full build.
 
-## Results (M1)
-Validation, 2022 snapshots (2,406). Full tables in [reports/m1_results.md](reports/m1_results.md):
+## Results (M2, current)
+**Settings** come from a validation-only tuning pass ([reports/m2_tuning.md](reports/m2_tuning.md)): 54 LightGBM configs and 5 ridge penalties, scored by rolling-origin CV (fit on 2013..y−1, score y, 2016–2021).
+- Chosen LightGBM: L1 loss, 7 leaves, 600 trees. Chosen ridge: alpha 100, though the penalty barely matters.
+- Tuning changed little: on 2022 both LightGBM versions score MAE 0.364.
+- Every run is logged to MLflow with its commit and data manifest.
 
-| Model | MAE (log change) | RMSE | Direction acc. |
-|---|---|---|---|
-| No change | 0.424 | 0.564 | n/a |
-| Age-only | 0.375 | 0.498 | 69.5% |
-| Linear (ridge) | 0.369 | 0.488 | 70.9% |
-| **LightGBM** | **0.364** | **0.482** | **71.3%** |
+**Validation (2022)** · [reports/m2_results.md](reports/m2_results.md): LightGBM 0.364 vs linear 0.369 vs no change 0.424 (MAE). LightGBM minus linear: −0.0047, CI −0.0090 to −0.0004.
 
-LightGBM minus linear, MAE: −0.0049 (bootstrap 95% CI −0.0087 to −0.0008). The gain over the linear baseline is small but real; the gain over "no change" is large (−0.060).
+**Where LightGBM beats linear** (pooled CV folds + 2022): by a small but consistent margin, about −0.005 MAE.
+- Every position and every value band.
+- 6 of 7 years; 2019, the COVID year, is a tie.
+- Clearest for ages 22–24 and 31+; a tie for ages 25–30.
 
-In the expanding-window backtest (2016–2022), LightGBM has the lowest MAE in 5 of 7 years. 2018 is a near-tie with linear (0.376 vs 0.375), and it is **worse than age-only and linear for 2019**, the snapshots whose target lands in the COVID markdown. **Test set, 2023–2024 snapshots (4,294)**: the single M1 run, logged in [docs/TEST_LOG.md](docs/TEST_LOG.md), with details in [reports/test_results.md](reports/test_results.md):
+**Test set, 2023–2024 (4,294 snapshots)**: the single M2 run, logged in [docs/TEST_LOG.md](docs/TEST_LOG.md), details in [reports/test_results.md](reports/test_results.md):
 
 | Model | MAE | RMSE | Direction acc. |
 |---|---|---|---|
 | No change | 0.410 | 0.551 | n/a |
 | Age-only | 0.367 | 0.496 | 69.3% |
-| Linear (ridge) | 0.359 | 0.483 | 70.1% |
-| LightGBM | 0.359 | 0.482 | 70.4% |
+| Linear (ridge) | 0.359 | 0.483 | 70.2% |
+| LightGBM | 0.357 | 0.488 | 70.4% |
 
-- LightGBM **beats no-change** (MAE −0.052, CI −0.058 to −0.045).
-- It **does not beat the linear baseline**: −0.0002, CI −0.0032 to +0.0030. Linear is better in 2023 and LightGBM in 2024.
-- So the SPEC's success criterion is met for "no change" but **not yet for linear**. With these baseline features the relationships are close to linear in log space (age, value level, momentum, squad value). The planned news features (M3) are the test of whether non-linear signal exists.
-- Nothing will be tuned against these test numbers.
+- **Beats "no change":** MAE −0.053 (CI −0.059 to −0.047).
+- **Does not beat linear:** −0.0012, CI −0.0044 to +0.0020, which includes zero. Linear is marginally better in 2023, LightGBM in 2024.
+- **The SPEC goal "beat both baselines" is not met.** It is met for "no change" but not for linear, at M1 or at M2. The validation-period edge (about 0.005) doesn't survive to 2023–24 at a significant level. With these features the signal is close to linear in log space. The M3 news features are the next test of whether non-linear signal exists. Nothing is tuned against these numbers.
+
+**80% prediction intervals** (quantile LightGBM + split-conformal calibration, [scout/ml/intervals.py](scout/ml/intervals.py)):
+
+| | Coverage | Mean width (log) |
+|---|---|---|
+| Backtest (fit ..y−2, calibrate y−1, score y), 2017–2022 | 67.5%–84.2% by year; 2017 is the only year below 75% | 1.00–1.26 |
+| **Test 2023–2024** | **82.2%** (2023: 82.9%, 2024: 81.4%) | 1.17 |
+
+The test coverage is inside the SPEC's 75–85% band. By segment it runs from 78.6% (ages 22–24) to 90.0% (over-31s, who are over-covered). `explain()` returns the interval with each prediction.
+
+**M1 (history).** The untuned M1 model tied linear on test too: 0.3586 vs 0.3588 ([docs/TEST_LOG.md](docs/TEST_LOG.md)). M1 reports: [reports/m1_results.md](reports/m1_results.md), [reports/m1_data.md](reports/m1_data.md).
 
 ## Test-set discipline
 The test set is evaluated at most once per milestone, only by `scout/ml/evaluate_test.py`, and every run is logged with date, commit and reason. **Disclosure:** in the earlier v0 design (Phase 2), the v0 test metrics were printed on every training run and viewed 4 times. No feature, hyperparameter or model decision was based on them; the only change made after viewing was switching the age-only baseline from median to mean, because of a metric artifact visible in validation too. v0 was then replaced by the SPEC design, with new splits.
@@ -100,4 +115,5 @@ v0 (commit `aa607c0`, reports in [reports/v0/](reports/v0/)) used every valuatio
 - Transfermarkt values are crowd estimates, and collection stopped in July 2026 (valuations end 2026-06-12).
 - `position` is each player's current position, applied to all years.
 - Club reconstruction is 83–98% accurate by year (see above); 2013, 2014 and 2020 are the weakest.
-- Survivorship: a target requires a revaluation within the year, so players who drop out of coverage are underrepresented.
+- Survivorship: a target requires a revaluation within the year. Only 0.5–7.4% of candidates drop out for that reason, mostly in 2023–24 and among over-31s ([reports/m2_excluded.md](reports/m2_excluded.md)).
+- **The population misses breakout prospects.** The ≥ 450-minute rule excludes 60% of under-22 candidates, and those who were revalued rose +0.54 in log value on average (vs +0.32 for the under-22s kept). The model says nothing about fringe youngsters, the players a scout often cares about most.

@@ -20,9 +20,13 @@ uv run pytest                                            # unit + leakage tests 
 docker compose up -d db                                  # Postgres + pgvector on 127.0.0.1; roles created on first start
 uv run --env-file .env python -m scout.pipeline          # manifest → load (scout_loader) → data report → features → train → validation
 uv run python -m scout.pipeline --no-db                  # same without Postgres
-uv run python -m scout.ml.evaluate_test --confirm-test --reason "..."   # test set: once per milestone, clean tree, logged
+uv run --env-file .env python -m scout.ml.tune           # validation-only tuning (~8 min) → scout/ml/best_params.json
+uv run --env-file .env python -m scout.ml.evaluate_test --confirm-test --reason "..."   # test set: once per milestone, clean tree, logged
+uv run --env-file .env python -m scout.ml.tracking       # MLflow UI (127.0.0.1:5000)
+uv run --env-file .env python -m scout.news.backfill     # Guardian metadata backfill (resumable, ≤ 500 calls/day)
 ```
-Key modules: `scout/data/snapshots.py` (population, club at t, target), `scout/ml/features.py`, `scout/ml/train.py`, `scout/ml/evaluate_test.py`, `scout/ml/model.py` (`explain()`). v0 lives at commit `aa607c0` and `reports/v0/`.
+Use `127.0.0.1`, not `localhost`, in DB URLs (Postgres is published on IPv4 only; `localhost` tries IPv6 first and hangs).
+Key modules: `scout/data/snapshots.py` (population, club at t, target), `scout/ml/features.py`, `scout/ml/train.py`, `scout/ml/tune.py`, `scout/ml/intervals.py`, `scout/ml/evaluate_test.py`, `scout/ml/model.py` (`explain()` with 80% interval), `scout/news/` (Guardian client, store, backfill). v0 lives at commit `aa607c0` and `reports/v0/`.
 
 ## ML rules
 - **No feature may use data dated after its snapshot date.** Every feature gets a test that appends future data and asserts the features at t don't change. News counts only if `published_at < t`.
@@ -46,7 +50,7 @@ Key modules: `scout/data/snapshots.py` (population, club at t, target), `scout/m
 - Guardian: persist only IDs, URLs, dates, tags and extracted signals; article text never persists beyond 24 h (purge job + test); ≤ 500 calls/day; `NEWS_LLM_ENABLED` and `EMBEDDINGS_ENABLED` switches must keep working when off.
 
 ## Thresholds
-- Model (SPEC): beat no-change and linear on test MAE; 80% interval coverage within 75–85%.
+- Model (SPEC): beat no-change and linear on test MAE; 80% interval coverage within 75–85%. Status after M2: coverage met (82.2%); linear not beaten (tie). Keep the goal; say so plainly in the README until it is met.
 - LLM: **placeholders** until the first full eval run with a validated judge (judge-human agreement ≥ 0.80, κ ≥ 0.6). Then set each just below the measured score and raise it as quality improves. Fixed from the start: injection cases resisted 100%, number-check violations on the PR subset 0, player-link precision ≥ 0.95.
 
 ## Security rules

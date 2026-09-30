@@ -154,15 +154,16 @@ Effort: S = up to 3 h, M = 3–8 h, L = more than 8 h.
 - **Small data:** about 2–3k snapshots per year; report bootstrap intervals on MAE differences.
 - **COVID year:** the 2020 season started after 1 Sep for some leagues, so "league at t" can be one season stale for that year.
 
-### M2: MLflow, intervals, hardening, news metadata backfill (Oct 12–18)
-- [ ] MLflow (Postgres backend store); every training run logged with params, metrics, manifest hash, git SHA
-- [ ] Split-conformal 80% intervals in numpy (quantile LightGBM + conformal correction on 2022); coverage on val; test coverage in the milestone's single test run (target 75–85%), by year / age / value band
-- [ ] Excluded-share report (no revaluation, < 450 minutes) by year and age
-- [ ] Repo public → CodeQL; branch protection blocking high-severity findings; Docker images pinned by digest, non-root user
-- [ ] Guardian client (≤ 500 calls/day, key from `.env`); `articles` table with **IDs, URLs, dates, tags only**; resumable metadata backfill
-- [ ] Text cache table with a 24 h TTL + purge job + a test proving nothing older than 24 h survives
-
-**Done when:** runs appear in MLflow; the coverage table is in the report; the backfill is running; the purge test passes.
+### M2: MLflow, intervals, hardening, news metadata backfill (Oct 12–18; done early, 2026-09-30)
+- [x] MLflow in Postgres (own `mlflow` database + `scout_mlflow` role); every tune/train run logged with params, metrics, manifest, commit
+- [x] **Improvement pass (validation only, time-boxed):** rolling-origin CV 2016–2021, 54 LightGBM configs + 5 ridge alphas, error breakdown by position / age / value band → `reports/m2_tuning.md`. LightGBM beats linear by ≈0.005 MAE in every segment on validation data.
+- [x] Split-conformal 80% intervals (quantile LightGBM + CQR, numpy); backtest coverage 67.5–84.2% by year; `explain()` returns the interval
+- [x] Excluded-share report → `reports/m2_excluded.md` (key finding: 60% of under-22 candidates excluded by the 450-minute rule)
+- [x] Single M2 test run (commit `04008c3`): coverage **82.2%** ✓ (75–85%); LightGBM **ties linear** (−0.0012, CI includes 0) ✗ → "beat both baselines" not met; stated in README
+- [x] Repo public; CodeQL (python + actions, 0 open alerts); ruleset on `main` (required checks + CodeQL high-severity gate; admin bypass for direct pushes)
+- [x] Docker images pinned by digest; non-root API user (M1); Dependabot for docker/compose; Actions pinned by SHA
+- [x] Guardian client (metadata only, ≤ 500 calls/day enforced in Postgres, 1 call/s), `news_*` tables, resumable backfill, 24 h text cache + purge + tests
+- [ ] **Live backfill: waiting for `GUARDIAN_API_KEY`** (code and tests done; run `python -m scout.news.backfill`)
 
 ### M3: news features (Oct 19–25)
 - [ ] Alias table (names + clubs over time); linker (name + club at article date; skip ambiguous, count skips)
