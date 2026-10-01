@@ -23,6 +23,8 @@ uv run python -m scout.pipeline --no-db                  # same without Postgres
 uv run --env-file .env python -m scout.ml.tune           # validation-only tuning (~8 min) → scout/ml/best_params.json
 uv run --env-file .env python -m scout.ml.evaluate_test --confirm-test --reason "..."   # test set: once per milestone, clean tree, logged
 uv run --env-file .env python -m scout.ml.tracking       # MLflow UI (127.0.0.1:5000)
+uv run --env-file .env python -m scout.text.wikipedia   # Wikipedia revisions at each snapshot date (background, resumable)
+uv run --env-file .env python -m scout.text.wiki_run --pilot 100   # extract-v2 pilot (needs TEXT_LLM_ENABLED=true, TEXT_LLM_MODEL)
 ```
 Use `127.0.0.1`, not `localhost`, in DB URLs (Postgres is published on IPv4 only; `localhost` tries IPv6 first and hangs).
 Key modules: `scout/data/snapshots.py` (population, club at t, target), `scout/ml/features.py`, `scout/ml/train.py`, `scout/ml/tune.py`, `scout/ml/intervals.py`, `scout/ml/evaluate_test.py`, `scout/ml/model.py` (`explain()` with 80% interval), `scout/text/` (source-agnostic linker, extract, features, labeling, store; sources per docs/SPEC.md). v0 lives at commit `aa607c0` and `reports/v0/`.
@@ -32,7 +34,8 @@ Key modules: `scout/data/snapshots.py` (population, club at t, target), `scout/m
 - Never use current-state columns: current club, contract expiry, highest-ever value, club market value, international caps (`players.current_club_*`, `players.contract_expiration_date`, `players.highest_market_value_in_eur`, `clubs.*`, `player_valuations.player_club_domestic_competition_id`). Club at t = the most recent of last league appearance, last transfer and the club on the last valuation (`player_valuations.current_club_id` is point-in-time: the club at the valuation date), all on or before t; squad value from as-of valuations. See `reports/m1_data.md`.
 - Snapshots: 1 September, 2013–2024. Split: train 2013–2021, val 2022, test 2023–2024. Never random.
 - **The test set is evaluated once per milestone** (`evaluate_test.py`, logged in `docs/TEST_LOG.md`). Tune and select on val only.
-- Always report against the no-change and linear baselines, by snapshot year as well as overall.
+- Always report against the no-change and linear baselines, by snapshot year as well as overall. The model baseline is still B0 (the 12 M1 features): the pre-registered stats feature pass (2026-10-01) found no set that helps.
+- Pre-register feature experiments in docs/RESEARCH_LOG.md (sets, protocol, decision rule) and commit that before running them.
 - If the data doesn't match an assumption, stop and ask instead of guessing.
 
 ## Test-set and reproducibility rules

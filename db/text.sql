@@ -55,3 +55,9 @@ CREATE TABLE IF NOT EXISTS text_signals (
     PRIMARY KEY (doc_id, prompt_version, player_id, signal_type, evidence_start),
     FOREIGN KEY (doc_id, prompt_version) REFERENCES text_extractions (doc_id, prompt_version)
 );
+
+-- extract-v2 (Wikipedia events): each signal carries its own event date and optional attributes.
+ALTER TABLE text_signals ADD COLUMN IF NOT EXISTS event_date date;
+ALTER TABLE text_signals ADD COLUMN IF NOT EXISTS date_precision text;    -- day | month
+ALTER TABLE text_signals ADD COLUMN IF NOT EXISTS attributes jsonb;       -- injury_type, duration_days
+ALTER TABLE text_documents ADD COLUMN IF NOT EXISTS body text;            -- stored for CC BY-SA sources only

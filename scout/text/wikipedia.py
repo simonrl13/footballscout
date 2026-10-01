@@ -127,17 +127,41 @@ def load_mapping(conn, player_ids) -> int:
     return len(rows)
 
 
-def revision_at(title: str, as_of: pd.Timestamp) -> dict | None:
-    """The revision in force at the start of `as_of` (latest revision with timestamp <= as_of 00:00 UTC)."""
-    data = _get(API, {"action": "query", "prop": "revisions", "titles": title, "rvlimit": 1, "rvdir": "older",
-                      "rvstart": as_of.strftime("%Y-%m-%dT00:00:00Z"), "rvprop": "ids|timestamp|content",
-                      "rvslots": "main", "redirects": 1, "format": "json", "formatversion": 2, "maxlag": 5})
-    pages = data.get("query", {}).get("pages", [])
-    if not pages or "revisions" not in pages[0]:
-        return None
-    rev = pages[0]["revisions"][0]
-    return {"revid": rev["revid"], "timestamp": rev["timestamp"], "title": pages[0]["title"],
-            "wikitext": rev.get("slots", {}).get("main", {}).get("content", "")}
+def history(title: str, newest: pd.Timestamp, oldest: pd.Timestamp) -> tuple[str, list[tuple[int, pd.Timestamp]]]:
+    """Revision ids and timestamps (no content) from `newest` back to the first revision at or before `oldest`."""
+    revs, cont, page_title = [], {}, title
+    while True:
+        data = _get(API, {"action": "query", "prop": "revisions", "titles": title, "rvprop": "ids|timestamp",
+                          "rvlimit": 500, "rvdir": "older", "rvstart": newest.strftime("%Y-%m-%dT00:00:00Z"),
+                          "redirects": 1, "format": "json", "formatversion": 2, "maxlag": 5, **cont})
+        page = data.get("query", {}).get("pages", [{}])[0]
+        page_title = page.get("title", page_title)
+        batch = [(r["revid"], pd.Timestamp(r["timestamp"]).tz_localize(None)) for r in page.get("revisions", [])]
+        revs += batch
+        if not batch or batch[-1][1] <= oldest or "continue" not in data:
+            return page_title, revs
+        cont = data["continue"]
+
+
+def in_force(revs: list[tuple[int, pd.Timestamp]], as_of: pd.Timestamp) -> int | None:
+    """Revision in force at the start of `as_of`: the latest with timestamp <= as_of 00:00 UTC (revs newest first)."""
+    for revid, ts in revs:
+        if ts <= as_of:
+            return revid
+    return None
+
+
+def contents(revids: list[int]) -> list[dict]:
+    """Content of up to 50 revisions in one request."""
+    data = _get(API, {"action": "query", "prop": "revisions", "revids": "|".join(map(str, revids)),
+                      "rvprop": "ids|timestamp|content", "rvslots": "main", "format": "json", "formatversion": 2,
+                      "maxlag": 5})
+    out = []
+    for page in data.get("query", {}).get("pages", []):
+        for r in page.get("revisions", []):
+            out.append({"revid": r["revid"], "timestamp": r["timestamp"], "title": page.get("title"),
+                        "wikitext": r.get("slots", {}).get("main", {}).get("content", "")})
+    return out
 
 
 def snapshot_pairs(snapshot_years) -> pd.DataFrame:
@@ -163,33 +187,57 @@ def wanted_pairs(conn, pairs: pd.DataFrame) -> pd.DataFrame:
     return pairs.sort_values(["player_id", "as_of"]).reset_index(drop=True)
 
 
-def fetch(conn, pairs: pd.DataFrame, log_every: int = 200) -> dict:
-    stats = {"pairs": 0, "new_docs": 0, "no_revision": 0}
+def fetch(conn, pairs: pd.DataFrame, log_every: int = 100) -> dict:
+    """Per player: one revision-list pass (ids/timestamps), pick the revision in force on each date locally, then
+    fetch missing contents in batches of 50 revisions. Resumable: done (player, as_of) pairs are skipped."""
+    stats = {"players": 0, "pairs": 0, "new_docs": 0, "no_revision": 0, "requests": 0}
     known = {r[0] for r in conn.execute("SELECT doc_id FROM text_documents WHERE source = 'wikipedia'").fetchall()}
-    t0 = time.time()
-    for r in pairs.itertuples():
-        rev = revision_at(r.title, r.as_of)
-        doc_id = None
-        if rev is None:
-            stats["no_revision"] += 1
-        else:
+    queue: dict[int, list[tuple[int, pd.Timestamp]]] = {}  # revid -> [(player_id, as_of)] waiting for content
+
+    def flush():
+        ids = list(queue)[:50]
+        for rev in contents(ids):
             doc_id = f"wikipedia:enwiki:rev:{rev['revid']}"
-            if doc_id not in known:
-                conn.execute(
-                    "INSERT INTO text_documents (doc_id, source, url, available_at, meta, body) VALUES (%s, 'wikipedia', %s, %s, %s, %s) "
-                    "ON CONFLICT (doc_id) DO NOTHING",
-                    (doc_id, f"https://en.wikipedia.org/w/index.php?oldid={rev['revid']}", rev["timestamp"],
-                     Jsonb({"title": rev["title"], "license": "CC BY-SA 4.0", "wikitext_chars": len(rev["wikitext"])}),
-                     strip_wikitext(rev["wikitext"])))
-                known.add(doc_id)
-                stats["new_docs"] += 1
-        conn.execute("INSERT INTO wiki_snapshot_revisions (player_id, as_of, doc_id) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
-                     (int(r.player_id), r.as_of.date(), doc_id))
+            conn.execute(
+                "INSERT INTO text_documents (doc_id, source, url, available_at, meta, body) VALUES (%s, 'wikipedia', %s, %s, %s, %s) "
+                "ON CONFLICT (doc_id) DO NOTHING",
+                (doc_id, f"https://en.wikipedia.org/w/index.php?oldid={rev['revid']}", rev["timestamp"],
+                 Jsonb({"title": rev["title"], "license": "CC BY-SA 4.0", "wikitext_chars": len(rev["wikitext"])}),
+                 strip_wikitext(rev["wikitext"])))
+            known.add(doc_id)
+            stats["new_docs"] += 1
+        for revid in ids:
+            doc_id = f"wikipedia:enwiki:rev:{revid}"
+            for pid, as_of in queue.pop(revid):
+                conn.execute("INSERT INTO wiki_snapshot_revisions (player_id, as_of, doc_id) VALUES (%s, %s, %s) "
+                             "ON CONFLICT DO NOTHING", (pid, as_of.date(), doc_id if doc_id in known else None))
         conn.commit()
-        stats["pairs"] += 1
-        if stats["pairs"] % log_every == 0:
+
+    t0 = time.time()
+    for pid, g in pairs.groupby("player_id", sort=True):
+        _, revs = history(g.title.iloc[0], g.as_of.max(), g.as_of.min())
+        for as_of in g.as_of:
+            revid = in_force(revs, as_of)
+            stats["pairs"] += 1
+            if revid is None:
+                stats["no_revision"] += 1
+                conn.execute("INSERT INTO wiki_snapshot_revisions (player_id, as_of, doc_id) VALUES (%s, %s, NULL) "
+                             "ON CONFLICT DO NOTHING", (int(pid), as_of.date()))
+            elif f"wikipedia:enwiki:rev:{revid}" in known:
+                conn.execute("INSERT INTO wiki_snapshot_revisions (player_id, as_of, doc_id) VALUES (%s, %s, %s) "
+                             "ON CONFLICT DO NOTHING", (int(pid), as_of.date(), f"wikipedia:enwiki:rev:{revid}"))
+            else:
+                queue.setdefault(revid, []).append((int(pid), as_of))
+        conn.commit()
+        while len(queue) >= 50:
+            flush()
+        stats["players"] += 1
+        if stats["players"] % log_every == 0:
             rate = stats["pairs"] / (time.time() - t0)
-            print(f"{stats} | {rate:.2f} pairs/s | remaining ~{(len(pairs) - stats['pairs']) / rate / 3600:.1f} h", flush=True)
+            left = (len(pairs) - stats["pairs"]) / rate / 3600
+            print(f"{stats} | {rate:.2f} pairs/s | remaining ~{left:.1f} h", flush=True)
+    while queue:
+        flush()
     return stats
 
 
