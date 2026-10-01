@@ -8,6 +8,8 @@
     "games": "c24da068cc7444e1e345c274d8d2320226cafc02186a17de2cf766eccb8ae79b",
     "clubs": "26dc6113d8206246145add2c7a318a657b3995fccdb0c9004d65ca6ae5e5968b",
     "competitions": "fadaf2992e01f8450d8d419006b0f533bbd6742163f4a0c5ee6a157fae7b791e",
-    "transfers": "5331311c6ec68c2c7a9c22979aff7d6f6fd2cefd96201d1bcfb35998a9d244ae"
+    "transfers": "5331311c6ec68c2c7a9c22979aff7d6f6fd2cefd96201d1bcfb35998a9d244ae",
+    "game_lineups": "06af8b0fcffc675eb2dc6363f185caad0ffb6835d018004dcc9a0eb1c5a50145",
+    "game_events": "93a4938b5ef31d4234590d3897b9c7baddfa13a1a392e00a86645b2a2221c535"
   }
 }
