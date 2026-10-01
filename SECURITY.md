@@ -7,9 +7,24 @@ Please don't open a public issue. Use GitHub's private vulnerability reporting o
 
 ## What is protected
 - **API keys** (Anthropic, Voyage; GCP if approved) and database credentials: only in `.env` (gitignored) or the host's secret store.
-- **The database:** player/valuation data (public CC0 source), public-text documents (Wikipedia revisions under CC BY-SA, GDELT metadata) and extracted signals, embeddings, traces.
+- **The database:** player/valuation data (public CC0 source), public-text documents (Wikipedia revisions under CC BY-SA) and extracted signals, embeddings, traces.
 - **Spend:** LLM and embedding usage (US$2/day cap on public endpoints; bulk jobs need manual approval).
-- **Third-party content terms:** Wikipedia attribution/share-alike, GDELT citation (see below).
+- **Third-party content terms:** Wikipedia attribution/share-alike (see below).
+
+## Secrets
+- **Local Anthropic API key:**
+  - Lives only in `.env`, which is gitignored and never read by Claude Code (`.claude/settings.json` deny rules).
+  - Belongs to a **dedicated "scout" workspace with its own monthly spending limit**.
+  - **Expires every 90 days and is rotated manually:** create a new key, update `.env`, revoke the old one.
+- **Database passwords** (admin, `scout_loader`, `scout_reader`, `scout_mlflow`): generated random values in `.env`. The app never connects as admin.
+- **`.env` hygiene:** after editing, run `uv run python -m scout.check_env`. It checks the syntax and prints only line numbers and the kind of problem, never names or values.
+- **Planned for deploy and CI (M7):** identity federation instead of static keys. Short-lived tokens are issued from GitHub Actions OIDC or the AWS instance's identity, so no long-lived API key sits in CI secrets or on the server.
+
+### Incident log
+- **2026-10-01: Anthropic API key exposed in a session transcript.**
+  - **What happened:** a `.env` line was missing its `=` (`ANTHROPIC_API_KEY<value>`). `uv run --env-file .env` could not parse it, and its warning printed the whole line, value included, into Claude Code's tool output. The parse failure also stopped every later variable from loading.
+  - **Response:** the owner was asked to revoke the key and issue a new one (status: pending confirmation). `scout/check_env.py` was added so `.env` syntax can be checked without printing content.
+  - **Not affected:** git (`.env` is gitignored; gitleaks found nothing), CI and the deployed services (none exist yet).
 
 ## Likely attackers and entry points
 | Attacker | Entry point |
@@ -70,5 +85,5 @@ Please don't open a public issue. Use GitHub's private vulnerability reporting o
 
 ## Known limitations
 - Text documents are written with the loader role. The API and agent will only read them (`scout_reader`).
-- `.claude/settings.json` guards the coding assistant, not the machine: shell commands outside its deny list could still read `.env`.
+- `.claude/settings.json` guards the coding assistant, not the machine: shell commands outside its deny list could still read `.env`. Tools that load `.env` (e.g. `uv --env-file`) may echo malformed lines in warnings (see the incident log).
 - The rest is completed in M6.
