@@ -4,10 +4,13 @@ A running record of decisions, experiments and results, kept so the project can 
 
 ## Research question
 
-Do LLM-extracted news signals (injury, transfer rumour, contract situation, manager change) add information beyond a strong structured baseline when forecasting 12-month changes in football players' Transfermarkt market values? And how do you build such features without look-ahead bias, both from the data (edited articles, current-state columns) and from the extracting model's own knowledge of how careers turned out?
+Do LLM-extracted signals from **public text** (injury, transfer, contract situation, manager change) add information beyond a strong structured baseline when forecasting 12-month changes in football players' Transfermarkt market values? How do you build such features without look-ahead bias, both from the data (edited text, current-state columns) and from the extracting model's own knowledge of how careers turned out?
+
+The candidate text sources are Wikipedia revision history (read as it stood on each snapshot date) for LLM extraction, and GDELT news metadata for a no-LLM "attention" comparison.
+
+*(Updated 2026-10-01: the question originally named "news signals" from the Guardian; see the entry on dropping the Guardian.)*
 
 Setting: annual 1-September snapshots, 2013–2024, of established players in seven European leagues (docs/SPEC.md). Baselines are "no change", age-only and ridge regression; the main model is LightGBM with SHAP explanations and split-conformal 80% intervals.
-
 ---
 
 ### 2026-09-29 — Replacing the v0 design with the SPEC design (Milestone M1)
@@ -188,13 +191,71 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 - **Evidence:** `docs/PLAN.md` (§2 news-feature leakage risks, M3 checklist); `db/news.sql` (`first_published_at`, `last_modified`).
 - **Paper relevance:** method (the central methodological contribution if it holds up).
 
+### 2026-09-30 — Linking player mentions point-in-time (Milestone M3)
+- **Question:** How do we link names in news to `player_id`s without false links and without using information from after the article date?
+- **What we tried:** A linker on case- and accent-folded text, built to keep character offsets:
+  - **Matching:** full names, longest match first; single-name players only when capitalized *and* their club appears in the article.
+  - **Candidates:** only players valued in the 730 days before the article.
+  - **Shared names:** resolved only by each candidate's club *at the article date* (the same `latest_evidence` club method as the model). Anything still ambiguous is skipped and counted.
+  - **Tag-only mode:** works on Guardian tags alone when text isn't available.
+- **Result (descriptive, `players.csv`):** 50,149 players; 2,389 share a full name with another player; 5,839 surnames are shared; 1,757 players have a single-token name. Precision on real links: not recorded yet. It needs the 100 hand-labelled links (target ≥ 0.95).
+- **Decision:** Adopt linker v1. `tests/test_linker.py` shows that a transfer dated *after* the article cannot resolve an ambiguous name.
+- **Evidence:** `scout/news/linker.py`; `tests/test_linker.py`; profiling via `pandas` on `data/raw/players.csv` (normalized-name duplicates).
+- **Paper relevance:** method (point-in-time entity linking).
+
+### 2026-09-30 — Guarding LLM extraction against hindsight (Milestone M3)
+- **Question:** How do we stop the extracting model from adding what it knows about players' later careers?
+- **What we tried:** Prompt v1 (`extract-v1`):
+  - only facts stated in the article; outside knowledge forbidden; the article is treated as untrusted data;
+  - four signal types with fixed labels, and structured JSON output;
+  - **evidence verification:** every signal must quote the article verbatim (whitespace-normalized). Unverifiable signals are dropped and counted, and only the quote's offsets are stored.
+  
+  News features count an article only if `first_published_at < t`, with an option to also drop articles edited at or after t, for a sensitivity analysis.
+- **Result:** Unit tests only (no LLM run yet):
+  - a hindsight-style quote ("Kane later joined Bayern Munich") and a paraphrase are dropped;
+  - future-dated articles leave the features at t unchanged.
+  
+  Real drop rate: not recorded.
+- **Decision:** No extraction run until the user approves (a) the cost estimate and (b) that the Guardian terms allow LLM processing.
+- **Evidence:** `scout/news/extract.py`, `scout/news/features.py`; `tests/test_extract.py`, `tests/test_news_features.py`, `tests/test_labeling_textpass.py::test_run_batch_verifies_quotes_and_caches_by_prompt_version`.
+- **Paper relevance:** method (the main look-ahead safeguard; the drop rate of unverified quotes is a candidate result).
+
+### 2026-10-01 — Dropping the Guardian as a text source (Milestone M3)
+- **Question:** Can the Guardian Open Platform be used for LLM-extracted features?
+- **What we tried:** Before any key was configured, the user reviewed the Guardian's terms.
+- **Result:** The terms prohibit AI-related use of the content (as reviewed by the user). The clause text is not recorded: the Guardian site could not be fetched from this environment. Nothing from the Guardian was ever stored. A database check on 2026-10-01 found 0 articles, 0 cached texts and 0 links, and the API call counter showed 0 calls on both days. The integration (client, backfill, text pass, rate-limit table, text cache) was removed. The linker, extraction and feature code were kept and made source-agnostic (`scout/text/`, `db/text.sql`).
+- **Decision:** Drop the Guardian; do not seek permission. Evaluate license-clean sources instead.
+- **Evidence:** this PR (#7) removing `scout/news/`; `db/text.sql` (drops the empty Guardian-era tables); `tests/test_labeling_extract.py::test_old_guardian_tables_are_gone`.
+- **Paper relevance:** limitation (license terms decide which text sources a value-forecasting study can use; reproducibility favours openly licensed text).
+
+### 2026-10-01 — Choosing license-clean public text sources (Milestone M3)
+- **Question:** Which open sources can supply point-in-time text signals for our players, and at what coverage, volume and cost?
+- **What we tried:** A read-only evaluation of two sources: license and policy pages, plus small samples (1 Wikidata SPARQL query, 258 Wikipedia API requests, 4 GDELT GKG 15-minute files).
+  - **(a) Wikipedia + Wikidata:** map players via P2446, then read each page as it was on the snapshot date and diff it against one year earlier.
+  - **(b) GDELT GKG:** person-name mentions, tone and themes.
+- **Result (descriptive, samples):**
+  - **Wikipedia/Wikidata:**
+    - 99.9% of 8,190 snapshot players map via P2446 and have an English Wikipedia page.
+    - The page existed at t in 100% of 631 sampled snapshots.
+    - Of 20 yearly diffs, 65% contain transfer terms, 40% contract terms and 20% injury terms (median 2,984 added characters).
+    - Diffs mix older rewritten text with new events, so event dates are needed.
+    - LLM cost estimate: about $24 on the Batch API (range $15–45).
+  - **GDELT:**
+    - In 9,039 records, 1.78% mention one of our active players by full name; 2.0% of matches are ambiguous.
+    - Only 39.8% of matched records have sports context, so name-only matching would have low precision.
+    - Full windows only from 2016.
+    - BigQuery cost estimate about $0–4 per pass (needs a dry run and a GCP account).
+- **Decision:** Both sources were adopted in SPEC.md, with attribution and display rules. Recommended order: Wikipedia first (it answers the research question, covers every year and league, and can be cited by the agent), then GDELT if a GCP account is approved. Planned comparison: baseline vs +GDELT vs +Wikipedia vs both on 2016–2024 snapshots. Runs wait for approval.
+- **Evidence:** `reports/m3_sources.md`; `docs/SPEC.md` (Data sources).
+- **Paper relevance:** method (point-in-time reading of an edited encyclopedia via revision history) + limitation (GDELT name-matching precision; Wikipedia lag and recall).
+
 ---
 
 ## Paper notes
 
 ### Candidate contributions
 - A point-in-time pipeline for player-value forecasting that avoids current-state columns, including club reconstruction from three dated sources with per-year validation.
-- A leakage-safe way to turn news into features: first-publication joins, edit-date sensitivity, and verbatim evidence quotes against LLM hindsight.
+- A leakage-safe way to turn public text into features: reading Wikipedia as it stood on each snapshot date (revision history), event dates inside the window, and verbatim evidence quotes against LLM hindsight.
 - An honest baseline study: a strong linear model on log value is hard to beat. LightGBM's small validation edge does not carry to the test years, which is the bar news features must clear.
 - Calibrated uncertainty (split-conformal) with per-year coverage under distribution shift, including the COVID year.
 - A documented population blind spot (excluded prospects) and its size.
@@ -203,13 +264,14 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 - Football market-value prediction from performance data (Transfermarkt-based studies).
 - The "wisdom of the crowd" validity of Transfermarkt values vs actual transfer fees.
 - Look-ahead and temporal leakage in financial and news-based forecasting; point-in-time data practices.
-- LLMs as feature extractors from news for forecasting; knowledge-cutoff and hindsight contamination in LLM evaluations.
+- LLMs as feature extractors from text for forecasting; knowledge-cutoff and hindsight contamination in LLM evaluations.
+- Wikipedia revision history as a point-in-time corpus; GDELT GKG in forecasting studies; entity linking to Wikidata.
 - Conformalized quantile regression (Romano et al., 2019) and conformal prediction under distribution shift.
 - Entity linking of person names in sports news.
 
 ### Open questions
-- Do news features close the gap to, or beat, the linear baseline on the untouched test years?
+- Do public-text features (Wikipedia LLM signals, GDELT attention) close the gap to, or beat, the linear baseline on the untouched test years?
 - How large is LLM hindsight leakage in practice? A candidate check: compare extraction with and without evidence verification, or on articles the model is likely to know vs obscure ones.
-- How much does news coverage differ by league (English vs other leagues), and does any gain concentrate where coverage is dense?
+- How much does text coverage differ by league and player profile (Wikipedia page activity, GDELT mention volume), and does any gain concentrate where coverage is dense?
 - Would a separate prospects model (under-22s, lower minutes threshold) behave differently from the main population?
 - Can the year-to-year shift in interval coverage be reduced (for example, calibrating on more than one year)?

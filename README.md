@@ -1,6 +1,6 @@
 # Scout — football player value forecasting + scouting agent
 
-Forecasts how a player's Transfermarkt market value will change over the next 12 months, with SHAP explanations. The model will be exposed through a Claude tool-calling agent with retrieval over Guardian football news (later milestones).
+Forecasts how a player's Transfermarkt market value will change over the next 12 months, with SHAP explanations. The model will be exposed through a Claude tool-calling agent with retrieval over public text (Wikipedia revisions, GDELT metadata; later milestones).
 
 > Values are Transfermarkt crowd-sourced estimates, **not transfer fees**.
 
@@ -8,8 +8,9 @@ Forecasts how a player's Transfermarkt market value will change over the next 12
 
 ## Status
 - [x] **M1** — data pipeline rebuilt to the SPEC, point-in-time features with leakage tests, baselines, test-set gate, reproducibility, DB roles, security gates
-- [x] **M2** — MLflow tracking, validation-only tuning pass, 80% prediction intervals (split-conformal), excluded-share report, Guardian metadata client *(live backfill waits for an API key)*
-- [ ] M3 — LLM-extracted news features · M4 — retrieval + agent · M5 — evals + MCP · M6 — ops · M7 — AWS deploy
+- [x] **M2** — MLflow tracking, validation-only tuning pass, 80% prediction intervals (split-conformal), excluded-share report (a Guardian client was built in M2 and removed in M3; nothing was ever fetched)
+- [ ] **M3 (in progress)** — public-text features. The Guardian was dropped (its terms prohibit AI use; nothing was stored). Sources evaluated read-only: Wikipedia revision history + Wikidata (LLM track) and GDELT (attention track); see [reports/m3_sources.md](reports/m3_sources.md). Source-agnostic linker, extraction with verbatim-quote checks, and point-in-time features are built and tested offline.
+- [ ] M4 — retrieval + agent · M5 — evals + MCP · M6 — ops · M7 — AWS deploy
 
 ## Problem (from the SPEC)
 - **Unit:** one player on **1 September** each year, 2013–2024.
@@ -39,8 +40,8 @@ uv run python -m scout.pipeline --no-db                  # same, without the Pos
 uv run --env-file .env python -m scout.ml.tune           # validation-only tuning pass (~8 min) → scout/ml/best_params.json
 uv run --env-file .env python -m scout.ml.evaluate_test --confirm-test --reason "..."   # the ONLY path to the test set; logged
 uv run --env-file .env python -m scout.ml.tracking       # MLflow UI on http://127.0.0.1:5000
-uv run --env-file .env python -m scout.news.backfill --max-calls 50   # Guardian metadata (needs GUARDIAN_API_KEY)
-uv run --env-file .env python -m scout.news.store        # purge cached article text older than 24 h
+uv run --env-file .env python -m scout.text.labeling sample   # 100 links to hand-check → labeling/links_v1.csv
+uv run python -m scout.text.labeling score               # precision with 95% CI after labelling
 uv run --env-file .env pytest                            # all tests (DB tests skip without the DB)
 ```
 Trained models go to `models/<run_id>/`, which is never overwritten; `models/LATEST` names the current run. Reports go to [reports/](reports/).

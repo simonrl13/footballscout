@@ -4,6 +4,29 @@ Written 2026-09-29, revised the same day to follow [SPEC.md](SPEC.md) and the de
 
 ---
 
+## 0.2 Decisions, round 3 (2026-10-01)
+
+| Topic | Decision |
+|---|---|
+| Guardian | **Dropped.** Its terms prohibit AI-related use. The integration was removed; nothing from it was ever stored (database check: 0 articles, texts, links, API calls). The linker, extraction and features stay as a source-agnostic `scout/text/` package. |
+| Text sources | Evaluated read-only (`reports/m3_sources.md`): **Wikipedia revision history + Wikidata** (LLM track) and **GDELT GKG** (no-LLM attention track). Both are recorded in SPEC.md with attribution and display rules. Recommended if only one: Wikipedia. |
+| Quote verification | Kept for everything an LLM extracts; Wikipedia signals also need an event date inside (t − 365, t]. |
+| Research question | Now "public text signals" (RESEARCH_LOG.md). |
+
+### Proposed reordered plan (awaiting approval)
+
+| # | Block | Est. h | Depends on |
+|---|---|---|---|
+| 1 | **PR #7:** Guardian removal, source-agnostic `scout/text/`, source evaluation, SPEC/log/docs | done | — |
+| 2 | **M4a: tools API + agent, no text.** FastAPI tools `get_player`, `predict_value_change` (prediction + 80% interval + SHAP), `search_players`, `compare_players`; Pydantic validation; `scout_reader` only; "as of 2026-06-12" demo snapshots; Claude agent loop with streaming (model from env); **number check** + violation log; Transfermarkt caveat; US$2/day spend cap; per-call trace rows | 14 | — |
+| 3 | **M5a: MCP server + text-free evals.** Same 4 tools over stdio (read-only), MCP Inspector; golden questions without text (lookups, predictions, comparisons, unanswerables, injection in the user question); CI subset | 8 | 2 |
+| 4 | **M3a: Wikipedia track** (see M3 below) | 16–20 | your approval: fetch, then pilot, then full run |
+| 5 | **M4b/M5b: text in the agent.** `search_text` tool over Wikipedia revisions with attribution; citations; planted-injection revision in the golden set; judge calibration (your 50 labels) | 10 | 4 |
+| 6 | **M3b: GDELT track** (stretch; first to cut) | 12–15 | your approval: GCP account |
+| 7 | M6 operations · M7 deploy (Nov 16–22) | 22.5 | 2–5 |
+
+Blocks 2–3 need no text source and no approvals beyond those already given (Anthropic SDK and MCP SDK are approved). Agent development and evals will make Claude API calls: a cost estimate comes before any eval run, as with every bulk job.
+
 ## 0.1 Decisions, round 2 (2026-09-29)
 
 | Topic | Decision |
@@ -165,23 +188,29 @@ Effort: S = up to 3 h, M = 3–8 h, L = more than 8 h.
 - [x] Guardian client (metadata only, ≤ 500 calls/day enforced in Postgres, 1 call/s), `news_*` tables, resumable backfill, 24 h text cache + purge + tests
 - [ ] **Live backfill: waiting for `GUARDIAN_API_KEY`** (code and tests done; run `python -m scout.news.backfill`)
 
-### M3: news features (Oct 19–25)
-- [ ] Alias table (names + clubs over time); linker (name + club at article date; skip ambiguous, count skips)
-- [ ] **Labeling file 1:** 100 sampled links as a CSV with article URL, sentence, candidate player/club/date and blank `correct` / `note` columns → precision (target ≥ 0.95)
-- [ ] Extraction v1 (Haiku, structured outputs, Batch API) behind a `NEWS_LLM_ENABLED` switch: text fetched live, processed, discarded; only signals + evidence offsets stored, cached on `(article_id, prompt_version)`. **Cost estimate → your approval → run.**
-- [ ] Point-in-time news features (`published_at < t`) + leakage test; ablation (val, then the milestone's test run); coverage by league; kept only if they help
+### M3: public-text features (revised 2026-10-01; branch `m3/news-features`, PR #7)
+- [x] Guardian integration removed; nothing stored (verified); empty tables dropped
+- [x] Source-agnostic `scout/text/`: point-in-time linker, extraction (`extract-v1`, verbatim quotes, Batch API, cache), point-in-time features (`available_at < t`), labelling tools; all tested offline
+- [x] Read-only source evaluation → `reports/m3_sources.md`; SPEC sources + attribution/display rules
+- **M3a Wikipedia (recommended first):**
+  - [ ] Wikidata P2446 → enwiki mapping table (99.9% coverage measured)
+  - [ ] Revision fetcher: revision in force at t and t − 365, markup stripped, new text per year. Serial requests, User-Agent, `maxlag`. About 12–20 h in the background. **Needs your OK.**
+  - [ ] Prompt v2: adds an event date (only events in (t − 365, t] count), keeps verbatim quotes. Pilot on 100 documents (< $1). **Needs your OK.**
+  - [ ] Full extraction run: estimate about $24 (range $15–45), refined after the pilot. **Needs your OK.**
+  - [ ] Features + leakage tests; 100-signal precision labels (your ~1.5 h); ablation on validation
+- **M3b GDELT (stretch):**
+  - [ ] GCP/BigQuery account (**needs your OK**), dry run
+  - [ ] Name extraction for our players with a sports-context filter + club-at-date; 100-record precision labels (your ~1 h)
+  - [ ] Attention features (counts, tone, themes; `DATE < t`) + leakage tests
+- [ ] Comparison on validation: baseline vs +GDELT vs +Wikipedia vs both (2016–2024 for all arms), then the milestone's single logged test run
 
-**Done when:** the ablation and coverage tables are in the report; a re-run hits the cache; with the switch off, the pipeline runs without news features.
-
-### M4: retrieval and agent (Oct 26–Nov 1)
-- [ ] Voyage embeddings behind an `EMBEDDINGS_ENABLED` switch, cached in Postgres by content hash; if disabled or the terms disallow it, retrieval falls back to metadata + full-text over titles/tags
-- [ ] Hybrid retrieval (RRF), metadata filters, recency decay; Haiku reranker kept only if recall@5 improves
-- [ ] Citations: text fetched live from the Guardian API when needed, cached ≤ 24 h
-- [ ] FastAPI tools with Pydantic validation; `scout_reader` role; predictions as of 2026-06-12
-- [ ] Streaming agent; `[model]` / `[news n]` labels; Transfermarkt caveat; news treated as untrusted data
-- [ ] Number check + violation log; US$2/day spend cap enforced in code (checked before each call)
-
-**Done when:** streaming chat answers all 4 tool types with citations; a planted wrong number is caught in a unit test; the spend cap blocks calls in a test.
+### M4: tools API and agent (reordered: M4a now, M4b after M3a)
+- [ ] **M4a:**
+  - FastAPI tools `get_player`, `predict_value_change`, `search_players`, `compare_players` (Pydantic, limits, `scout_reader`)
+  - Demo snapshots as of 2026-06-12
+  - Streaming agent (model from env); number check + violation log; Transfermarkt caveat
+  - US$2/day spend cap; per-call trace rows
+- [ ] **M4b:** `search_text` over Wikipedia revisions (filters, recency, attribution per SPEC); `[model]` / `[wiki n]` labels; Voyage embeddings only if `EMBEDDINGS_ENABLED`, otherwise full text search (titles are fine: Wikipedia is CC BY-SA)
 
 ### M5: evals, CI evals, MCP (Nov 2–8)
 - [ ] 60-question golden set incl. unanswerables, a planted injection article and injection in the user question
@@ -234,4 +263,8 @@ The evals, security work and deploy are protected.
 
 ## 6. Open questions
 
-All questions from the first draft were answered on 2026-09-29 (see §0.1). Still pending on your side: whether the Guardian terms allow LLM processing and stored embeddings. M3–M4 are built so either can be switched off.
+Open (2026-10-01):
+1. Approve the reordered plan (§0.2)?
+2. Approve the Wikipedia fetch (about 63–71k serial API requests, about 12–20 h in the background, free)?
+3. GDELT: approve a GCP/BigQuery account, or drop GDELT to stretch / out of scope?
+4. Agent and eval API spend: budget per milestone (a cost estimate before any eval run)?
