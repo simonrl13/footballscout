@@ -293,6 +293,25 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 - **Evidence:** this entry is committed before the evaluation script runs (see git history).
 - **Paper relevance:** method (pre-registered feature evaluation).
 
+### 2026-10-01 — RESULT: stats feature pass, a negative result (Milestone M3a)
+- **Question:** As pre-registered (entry above, commit `6f097e8`): do position percentiles (P), availability (A), discipline (D) or in-match injury records (I) improve on B0?
+- **What we tried:** Exactly the pre-registered protocol: LightGBM with the fixed tuned settings and ridge (alpha 100); rolling-origin CV 2016–2021 plus validation 2022. Pooled n = 16,458 snapshots. **No test data.** Run at commit `1f882f7`.
+- **Result (CV + validation, LightGBM, MAE(set) − MAE(B0) with paired-bootstrap 95% CI):**
+
+  | Set | Difference | 95% CI | Mean CV MAE | MAE 2022 |
+  |---|---|---|---|---|
+  | B0 | — | — | 0.3573 | 0.3644 |
+  | P (position percentiles) | −0.0002 | [−0.0006, +0.0002] | 0.3571 | 0.3635 |
+  | A (availability) | +0.0002 | [−0.0003, +0.0007] | 0.3573 | 0.3652 |
+  | D (discipline) | −0.0000 | [−0.0004, +0.0003] | 0.3574 | 0.3634 |
+  | I (injury records) | **+0.0017** | [+0.0010, +0.0023] (worse) | 0.3586 | 0.3676 |
+  | ALL | **+0.0008** | [+0.0001, +0.0015] (worse) | 0.3575 | 0.3682 |
+
+  The B0 LightGBM − ridge difference (pooled) is −0.0054 [−0.0069, −0.0036].
+- **Decision:** By the pre-registered rule, **B0 stays the baseline**: no set helps, and I and ALL are significantly worse. The stats feature code is kept for reference but is not part of the model. Later comparisons, including the Wikipedia arm, are against B0.
+- **Evidence:** `reports/m3_stats_pass.md`; `scout/ml/feature_pass.py`, `scout/ml/stats_features.py`; `tests/test_stats_features.py`; MLflow run "stats-feature-pass".
+- **Paper relevance:** negative result. Cheap match-derived availability and injury proxies add nothing beyond value, age and minutes. The injury-coded substitutions even hurt, perhaps because their coding drifts over time (25.7% → 55.0% of games). This raises the bar for text-derived injury signals.
+
 ---
 
 ## Paper notes
