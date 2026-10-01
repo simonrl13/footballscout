@@ -188,6 +188,35 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 - **Evidence:** `docs/PLAN.md` (§2 news-feature leakage risks, M3 checklist); `db/news.sql` (`first_published_at`, `last_modified`).
 - **Paper relevance:** method (the central methodological contribution if it holds up).
 
+### 2026-09-30 — Linking player mentions point-in-time (Milestone M3)
+- **Question:** How do we link names in news to `player_id`s without false links and without using information from after the article date?
+- **What we tried:** A linker on case- and accent-folded text, built to keep character offsets:
+  - **Matching:** full names, longest match first; single-name players only when capitalized *and* their club appears in the article.
+  - **Candidates:** only players valued in the 730 days before the article.
+  - **Shared names:** resolved only by each candidate's club *at the article date* (the same `latest_evidence` club method as the model). Anything still ambiguous is skipped and counted.
+  - **Tag-only mode:** works on Guardian tags alone when text isn't available.
+- **Result (descriptive, `players.csv`):** 50,149 players; 2,389 share a full name with another player; 5,839 surnames are shared; 1,757 players have a single-token name. Precision on real links: not recorded yet. It needs the 100 hand-labelled links (target ≥ 0.95).
+- **Decision:** Adopt linker v1. `tests/test_linker.py` shows that a transfer dated *after* the article cannot resolve an ambiguous name.
+- **Evidence:** `scout/news/linker.py`; `tests/test_linker.py`; profiling via `pandas` on `data/raw/players.csv` (normalized-name duplicates).
+- **Paper relevance:** method (point-in-time entity linking).
+
+### 2026-09-30 — Guarding LLM extraction against hindsight (Milestone M3)
+- **Question:** How do we stop the extracting model from adding what it knows about players' later careers?
+- **What we tried:** Prompt v1 (`extract-v1`):
+  - only facts stated in the article; outside knowledge forbidden; the article is treated as untrusted data;
+  - four signal types with fixed labels, and structured JSON output;
+  - **evidence verification:** every signal must quote the article verbatim (whitespace-normalized). Unverifiable signals are dropped and counted, and only the quote's offsets are stored.
+  
+  News features count an article only if `first_published_at < t`, with an option to also drop articles edited at or after t, for a sensitivity analysis.
+- **Result:** Unit tests only (no LLM run yet):
+  - a hindsight-style quote ("Kane later joined Bayern Munich") and a paraphrase are dropped;
+  - future-dated articles leave the features at t unchanged.
+  
+  Real drop rate: not recorded.
+- **Decision:** No extraction run until the user approves (a) the cost estimate and (b) that the Guardian terms allow LLM processing.
+- **Evidence:** `scout/news/extract.py`, `scout/news/features.py`; `tests/test_extract.py`, `tests/test_news_features.py`, `tests/test_labeling_textpass.py::test_run_batch_verifies_quotes_and_caches_by_prompt_version`.
+- **Paper relevance:** method (the main look-ahead safeguard; the drop rate of unverified quotes is a candidate result).
+
 ---
 
 ## Paper notes

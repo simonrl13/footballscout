@@ -14,7 +14,7 @@ API = "https://content.guardianapis.com"
 DAILY_LIMIT = 500
 PAGE_SIZE = 200  # the API maximum
 # Dates only: never bodyText/body in the search call. Text is fetched per article, on demand (fetch_text).
-SEARCH_FIELDS = "firstPublicationDate,lastModified"
+SEARCH_FIELDS = "firstPublicationDate,lastModified,wordcount"  # wordcount is a number, not content
 _clock = {"last_call": 0.0}  # monotonic time of the previous request (1 call/s)
 
 
@@ -61,5 +61,6 @@ def to_row(item: dict) -> dict:
         "published_at": item["webPublicationDate"],
         "first_published_at": fields.get("firstPublicationDate"),
         "last_modified": fields.get("lastModified"),
+        "wordcount": int(fields["wordcount"]) if str(fields.get("wordcount", "")).isdigit() else None,
         "tags": [{"id": t["id"], "type": t.get("type"), "webTitle": t.get("webTitle")} for t in item.get("tags", [])],
     }

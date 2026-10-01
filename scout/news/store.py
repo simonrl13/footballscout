@@ -36,10 +36,10 @@ def take_call(conn, limit: int = DAILY_LIMIT) -> bool:
 def upsert_articles(conn, rows: list[dict]) -> int:
     with conn.cursor() as cur:
         cur.executemany(
-            "INSERT INTO news_articles (article_id, url, section_id, published_at, first_published_at, last_modified, tags) "
-            "VALUES (%(article_id)s, %(url)s, %(section_id)s, %(published_at)s, %(first_published_at)s, %(last_modified)s, %(tags)s) "
-            "ON CONFLICT (article_id) DO UPDATE SET url = EXCLUDED.url, last_modified = EXCLUDED.last_modified, "
-            "tags = EXCLUDED.tags", [{**r, "tags": Jsonb(r["tags"])} for r in rows])
+            "INSERT INTO news_articles (article_id, url, section_id, published_at, first_published_at, last_modified, wordcount, tags) "
+            "VALUES (%(article_id)s, %(url)s, %(section_id)s, %(published_at)s, %(first_published_at)s, %(last_modified)s, "
+            "%(wordcount)s, %(tags)s) ON CONFLICT (article_id) DO UPDATE SET url = EXCLUDED.url, "
+            "last_modified = EXCLUDED.last_modified, wordcount = EXCLUDED.wordcount, tags = EXCLUDED.tags", [{**r, "tags": Jsonb(r["tags"])} for r in rows])
     conn.commit()
     return len(rows)
 

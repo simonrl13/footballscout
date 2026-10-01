@@ -165,11 +165,13 @@ Effort: S = up to 3 h, M = 3–8 h, L = more than 8 h.
 - [x] Guardian client (metadata only, ≤ 500 calls/day enforced in Postgres, 1 call/s), `news_*` tables, resumable backfill, 24 h text cache + purge + tests
 - [ ] **Live backfill: waiting for `GUARDIAN_API_KEY`** (code and tests done; run `python -m scout.news.backfill`)
 
-### M3: news features (Oct 19–25)
-- [ ] Alias table (names + clubs over time); linker (name + club at article date; skip ambiguous, count skips)
-- [ ] **Labeling file 1:** 100 sampled links as a CSV with article URL, sentence, candidate player/club/date and blank `correct` / `note` columns → precision (target ≥ 0.95)
-- [ ] Extraction v1 (Haiku, structured outputs, Batch API) behind a `NEWS_LLM_ENABLED` switch: text fetched live, processed, discarded; only signals + evidence offsets stored, cached on `(article_id, prompt_version)`. **Cost estimate → your approval → run.**
-- [ ] Point-in-time news features (`published_at < t`) + leakage test; ablation (val, then the milestone's test run); coverage by league; kept only if they help
+### M3: news features (Oct 19–25; started 2026-09-30 on branch `m3/news-features`)
+- [x] Alias index (players.csv names, club-name keys); linker v1 (full names, capitalized mononyms only with club context, active players only, ambiguity resolved by club at article date; skips counted); tag-only mode
+- [ ] **Labeling file 1:** generator and scorer done (`scout/news/labeling.py`). No article text in the file: URL, matched name, candidate player, club at date, Transfermarkt link. *Needs mentions (backfill + text pass), then your ~1.5 h of labelling.*
+- [x] Extraction v1 code (`extract-v1` prompt, JSON schema, Batch API runner, verbatim-quote verification, offsets only, cache on `(article_id, prompt_version)`, model from `NEWS_LLM_MODEL`); tested with a fake client
+- [ ] **Extraction run: blocked** on (a) the cost estimate (needs article counts + word counts from the backfill), (b) your OK, and (c) your confirmation that the Guardian terms allow LLM processing. Also: confirm Haiku 4.5 structured-output support with one Models API call at that point.
+- [x] Point-in-time news features (`first_published_at < t`; optional edit-sensitivity filter) + leakage tests
+- [ ] Ablation (val, then the milestone's single test run) + coverage by league: after mentions/signals exist
 
 **Done when:** the ablation and coverage tables are in the report; a re-run hits the cache; with the switch off, the pipeline runs without news features.
 

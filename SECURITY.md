@@ -34,6 +34,8 @@ Please don't open a public issue. Use GitHub's private vulnerability reporting o
 | Numbers in answers must come from tool outputs (post-check, violations logged) | M4 | LLM09, ASI09 |
 | Rate limits; US$2/day spend cap in code; max tool iterations and `max_tokens` | M4–M6 | LLM10, ASI08 |
 | Read-only MCP tools | M5 | LLM06, ASI02 |
+| News pipeline gates: bulk text read (`NEWS_TEXT_PASS_ENABLED`), LLM extraction (`NEWS_LLM_ENABLED` + approved cost); article text never persisted (links/offsets only) | M3 | LLM02, LLM10 |
+| Extraction prompt treats articles as untrusted data; outputs constrained by JSON schema; every signal needs a verbatim quote or it is dropped | M3 | LLM01, LLM04, LLM09 |
 
 \*IDs are tentative and are verified against the published OWASP lists before M6.
 
@@ -56,6 +58,10 @@ Please don't open a public issue. Use GitHub's private vulnerability reporting o
   - the daily call budget can't be exceeded;
   - the backfill resumes without re-fetching.
 - **CodeQL (M2):** first scan found 10 alerts (3 medium supply-chain: Actions pinned by tag; 7 code quality). All fixed; 0 open.
+- **News pipeline (M3):**
+  - `tests/test_labeling_textpass.py`: the text pass stores links but no text, adds nothing to the text cache, and resumes.
+  - The extraction runner verifies quotes and caches by prompt version.
+  - `tests/test_extract.py`: invented or paraphrased quotes are dropped, and the switch and model come from env.
 - M5 adds prompt-injection evals and agent-level read-only tests.
 
 ## Known limitations

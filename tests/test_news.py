@@ -13,7 +13,7 @@ SAMPLE = {  # shape of a Guardian /search result, including fields we must NOT s
     "id": "football/2019/aug/10/test-article", "type": "article", "sectionId": "football",
     "webTitle": "Headline text", "webUrl": "https://www.theguardian.com/football/2019/aug/10/test-article",
     "webPublicationDate": "2019-08-10T12:00:00Z",
-    "fields": {"firstPublicationDate": "2019-08-10T11:00:00Z", "lastModified": "2019-08-11T09:00:00Z",
+    "fields": {"firstPublicationDate": "2019-08-10T11:00:00Z", "lastModified": "2019-08-11T09:00:00Z", "wordcount": "812",
                "bodyText": "FULL ARTICLE TEXT", "body": "<p>FULL ARTICLE TEXT</p>"},
     "tags": [{"id": "football/arsenal", "type": "keyword", "webTitle": "Arsenal", "apiUrl": "x"}],
 }
@@ -21,7 +21,8 @@ SAMPLE = {  # shape of a Guardian /search result, including fields we must NOT s
 
 def test_to_row_keeps_only_ids_urls_dates_tags():
     row = guardian.to_row(SAMPLE)
-    assert set(row) == {"article_id", "url", "section_id", "published_at", "first_published_at", "last_modified", "tags"}
+    assert set(row) == {"article_id", "url", "section_id", "published_at", "first_published_at", "last_modified", "wordcount", "tags"}
+    assert row["wordcount"] == 812
     assert "FULL ARTICLE TEXT" not in repr(row) and "Headline text" not in repr(row)
     assert row["tags"] == [{"id": "football/arsenal", "type": "keyword", "webTitle": "Arsenal"}]
 

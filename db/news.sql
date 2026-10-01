@@ -37,3 +37,46 @@ CREATE TABLE IF NOT EXISTS news_backfill_progress (
     done        boolean NOT NULL DEFAULT false,
     updated_at  timestamptz NOT NULL DEFAULT now()
 );
+
+-- M3 -----------------------------------------------------------------------------------------------
+-- Word count is a number from the API (fields.wordcount), not content; used for LLM cost estimates.
+ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS wordcount integer;
+
+-- Player mentions linked by scout.news.linker. Offsets point into the live-fetched text (never stored);
+-- -1 means the link came from a Guardian tag, not the text.
+CREATE TABLE IF NOT EXISTS news_mentions (
+    article_id     text NOT NULL REFERENCES news_articles (article_id),
+    player_id      integer NOT NULL,
+    start_offset   integer NOT NULL,
+    end_offset     integer NOT NULL,
+    method         text NOT NULL,          -- unique_name | club | *_tag
+    linker_version text NOT NULL,
+    PRIMARY KEY (article_id, player_id, start_offset, linker_version)
+);
+CREATE INDEX IF NOT EXISTS news_mentions_player ON news_mentions (player_id);
+
+-- One row per (article, prompt version) processed by the LLM: the extraction cache key.
+CREATE TABLE IF NOT EXISTS news_extractions (
+    article_id     text NOT NULL REFERENCES news_articles (article_id),
+    prompt_version text NOT NULL,
+    model          text NOT NULL,
+    status         text NOT NULL,          -- succeeded | errored | expired
+    input_tokens   integer,
+    output_tokens  integer,
+    batch_id       text,
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (article_id, prompt_version)
+);
+
+-- Extracted signals. Only offsets of the verified evidence quote are kept, never the quote text.
+CREATE TABLE IF NOT EXISTS news_signals (
+    article_id     text NOT NULL,
+    prompt_version text NOT NULL,
+    player_id      integer NOT NULL,
+    signal_type    text NOT NULL,          -- injury | transfer_rumour | contract | manager_change
+    detail         text NOT NULL,
+    evidence_start integer NOT NULL,
+    evidence_end   integer NOT NULL,
+    PRIMARY KEY (article_id, prompt_version, player_id, signal_type, evidence_start),
+    FOREIGN KEY (article_id, prompt_version) REFERENCES news_extractions (article_id, prompt_version)
+);
