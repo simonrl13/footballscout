@@ -37,15 +37,6 @@ to rise or fall in value.
       (`ScoutResearchBot/… (https://github.com/simonrl13/footballscout; …)`).
     - Storage: revision text may be stored (the license allows it), always with
       its revision URL so attribution can be shown.
-  - **GDELT Global Knowledge Graph** (no-LLM "attention" track): mention counts,
-    tone and themes per player before each snapshot, from GKG records with
-    `DATE < t`.
-    - License: unrestricted use; any use or redistribution must cite the GDELT
-      Project and link to https://www.gdeltproject.org/.
-    - Coverage: GKG 2.0 from February 2015, so only snapshots from 2016 have a
-      full window.
-    - Storage: GDELT gives metadata only. Source articles are third-party: link
-      to them, never copy their text.
 - **Attribution and display rules** (agent answers, API responses, UI, reports):
   - Never show long passages. Show a short summary (at most two sentences) or a
     verbatim quote of at most 300 characters, marked as summarized or quoted.
@@ -54,13 +45,12 @@ to rise or fall in value.
     add "Text from Wikipedia, CC BY-SA 4.0" with links to the license and to
     the page history (authors). If the text is changed, say so. Excerpts shown
     to users stay under CC BY-SA.
-  - **GDELT:** "Data: The GDELT Project (gdeltproject.org)" wherever
-    GDELT-derived numbers appear; link to the specific source article URL when
-    one is referenced.
   - **Wikidata:** no attribution required (CC0); credit it as a courtesy.
-- Any LLM-extracted signal must carry an evidence quote that appears verbatim
-  in the source text, plus (for Wikipedia) an event date inside the 12 months
-  before the snapshot. Otherwise it is dropped. The extracting model may know
+- Extraction schema (`extract-v2`): injuries (type, date, duration if stated),
+  contract extensions and expiry, loans and transfers. No transfer rumours.
+- Any LLM-extracted event must carry its own date and an evidence quote that
+  appears verbatim in the source text, and only events dated in the 12 months
+  before the snapshot count. Otherwise it is dropped. The extracting model may know
   later outcomes, and this check is the guard.
 - LLM processing and stored embeddings stay switchable (`TEXT_LLM_ENABLED`,
   `EMBEDDINGS_ENABLED`). Every bulk run needs a cost estimate approved first.
@@ -75,14 +65,12 @@ to rise or fall in value.
 - Club moves in the previous 12 months
 
 ## Planned additions
-- M3: public-text features, joined point-in-time and kept only if an ablation
-  shows they help:
-  - LLM-extracted Wikipedia signals (injury, transfer, contract, manager change,
-    each with an event date);
-  - GDELT attention features (mention counts, tone, themes).
-  - Planned comparison: baseline vs +GDELT vs +Wikipedia vs both. All arms use
-    2016–2024 snapshots (the GDELT window); Wikipedia alone is also reported on
-    2013–2024.
+- M3a: a stats feature pass first (pre-registered in docs/RESEARCH_LOG.md):
+  position percentiles, availability proxy, discipline, in-match injury records.
+  The best set on validation becomes the new baseline.
+- M3a: LLM-extracted Wikipedia signals (injuries, contracts, loans and transfers,
+  each with an event date), joined point-in-time and kept only if an ablation
+  against the new baseline shows they help (2013–2024).
 
 ## Leakage rules
 - No feature may use data dated after the snapshot.
@@ -102,6 +90,12 @@ to rise or fall in value.
 - Live demo predictions use data as of 12 June 2026, the last valuation date.
 
 ## Future work (v2)
+- **GDELT news attention (out of scope for v1, 2026-10-01).** Per-player mention
+  counts, tone and themes from the GDELT Global Knowledge Graph (`DATE < t`).
+  License: unrestricted use with a citation and link to https://www.gdeltproject.org/.
+  Needs a sports-context filter (39.8% of name matches in a sample had sports
+  context) and BigQuery (new Google Cloud account). Windows from 2016 only.
+  Evaluation: `reports/m3_sources.md`.
 - **Prospects model (candidate experiment).** The v1 population's 450-minute rule
   excludes 60% of under-22 candidates, and those players rise most when revalued
   (+0.54 log on average vs +0.32 for under-22s kept; `reports/m2_excluded.md`).
@@ -129,6 +123,5 @@ fine-tuning, a full frontend (thin UI only).
 
 ## Risks
 Data collection has stopped (no newer data); coverage gaps outside the
-chosen leagues; noise in crowd-sourced values; Wikipedia edits lag real events;
-GDELT name matching needs a sports-context filter (39.8% of name matches in a
-sample had sports context).
+chosen leagues; noise in crowd-sourced values; Wikipedia edits lag real events
+and mix new events with rewritten older text (event dates needed).

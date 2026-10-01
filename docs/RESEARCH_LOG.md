@@ -223,7 +223,7 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 ### 2026-10-01 — Dropping the Guardian as a text source (Milestone M3)
 - **Question:** Can the Guardian Open Platform be used for LLM-extracted features?
 - **What we tried:** Before any key was configured, the user reviewed the Guardian's terms.
-- **Result:** The terms prohibit AI-related use of the content (as reviewed by the user). The clause text is not recorded: the Guardian site could not be fetched from this environment. Nothing from the Guardian was ever stored. A database check on 2026-10-01 found 0 articles, 0 cached texts and 0 links, and the API call counter showed 0 calls on both days. The integration (client, backfill, text pass, rate-limit table, text cache) was removed. The linker, extraction and feature code were kept and made source-agnostic (`scout/text/`, `db/text.sql`).
+- **Result:** The terms prohibit AI-related use of the content. Clause as quoted by Gen Digital's terms tracker (ai.gendigital.com), referencing the Guardian Open Platform terms dated 25 January 2024 (**not verified first-hand**; the Guardian site could not be fetched from this environment): content may not be used "for any machine learning, machine learning language models and/or artificial intelligence-related purposes (including the training or development of such technologies)". Nothing from the Guardian was ever stored. A database check on 2026-10-01 found 0 articles, 0 cached texts and 0 links, and the API call counter showed 0 calls on both days. The integration (client, backfill, text pass, rate-limit table, text cache) was removed. The linker, extraction and feature code were kept and made source-agnostic (`scout/text/`, `db/text.sql`).
 - **Decision:** Drop the Guardian; do not seek permission. Evaluate license-clean sources instead.
 - **Evidence:** this PR (#7) removing `scout/news/`; `db/text.sql` (drops the empty Guardian-era tables); `tests/test_labeling_extract.py::test_old_guardian_tables_are_gone`.
 - **Paper relevance:** limitation (license terms decide which text sources a value-forecasting study can use; reproducibility favours openly licensed text).
@@ -248,6 +248,50 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 - **Decision:** Both sources were adopted in SPEC.md, with attribution and display rules. Recommended order: Wikipedia first (it answers the research question, covers every year and league, and can be cited by the agent), then GDELT if a GCP account is approved. Planned comparison: baseline vs +GDELT vs +Wikipedia vs both on 2016–2024 snapshots. Runs wait for approval.
 - **Evidence:** `reports/m3_sources.md`; `docs/SPEC.md` (Data sources).
 - **Paper relevance:** method (point-in-time reading of an edited encyclopedia via revision history) + limitation (GDELT name-matching precision; Wikipedia lag and recall).
+
+### 2026-10-01 — Dropping GDELT; refocusing the Wikipedia extraction schema (Milestone M3)
+- **Question:** Which of the two evaluated text tracks to pursue, and which signals to extract?
+- **What we tried:** We considered running both tracks (see the source evaluation entry). For the extraction schema we compared the four planned signal types with a narrower set.
+- **Result:**
+  - GDELT would need a new Google Cloud account.
+  - GDELT's name matching had only 39.8% sports context in a sample (descriptive).
+  - GDELT windows start in 2016.
+- **Decision:**
+  - **GDELT is out of scope**, moved to SPEC "Future work"; no Google Cloud account.
+  - **Wikipedia only.** The extraction schema (`extract-v2`) covers injuries (type, date, duration if stated), contract extensions and expiry, loans and transfers.
+  - **Transfer rumours are dropped:** they are speculative, and in an encyclopedia they are rare and often removed later.
+  - Every event needs its own date and a verbatim-verified quote. Only events dated in the 12 months before the snapshot count.
+  - The planned comparison becomes baseline vs +Wikipedia signals, on 2013–2024.
+- **Evidence:** `docs/SPEC.md` (Data sources, Future work); `docs/PLAN.md` §0.3.
+- **Paper relevance:** method (signal definition) + limitation (no news-attention arm).
+
+### 2026-10-01 — PRE-REGISTRATION: stats feature pass (Milestone M3a, before any run)
+- **Question:** Do simple, free statistics (position-relative output, availability, discipline, in-match injury records) improve on the M1/M2 baseline (B0, 12 features) on validation data? If so, which set becomes the new baseline for every later comparison, including the Wikipedia arm?
+- **Feature sets (all from the previous season Y−1, league games of the 7 leagues, dated strictly before t):**
+  - **B0:** the current 12 features (unchanged).
+  - **P (position percentiles):**
+    - `pct_ga90_pos`: percentile rank of goals+assists per 90 among the year's population snapshots with the same position and league.
+    - `pct_minshare_pos`: the same for share of team minutes.
+  - **A (availability, a proxy; not "injuries"):**
+    - `missed_share`: share of the primary club's league matches, from the player's first match-day squad listing for that club in Y−1 to the club's last Y−1 league match before t, in which he was not in the match-day squad (`game_lineups`, starting or substitute).
+    - `longest_absence`: the longest run of consecutive such matches.
+    - Both are missing for 2013 snapshots, because there are no lineups for season 2012 (measured coverage 0.0% for 2012 vs 94.7–100% for 2013–2024).
+  - **D (discipline):** `cards_per90` = (yellow + red cards) per 90 league minutes.
+  - **I (in-match injury records):**
+    - `pct_injury_subs`: percentile rank, within the year and league, of the number of Y−1 league matches in which the player was substituted off with reason "Injury" (`game_events`).
+    - A percentile, because injury coding drifts: the share of league games with at least one injury-coded substitution rises from 25.7% (season 2012) to 55.0% (2023) (descriptive, `game_events`).
+  - **ALL:** B0 + P + A + D + I.
+- **Protocol:**
+  - LightGBM with the fixed tuned settings (`scout/ml/best_params.json`, no re-tuning) and ridge (alpha 100).
+  - Rolling-origin CV: fit on 2013..y−1, score y, for y = 2016–2021; then validation 2022 (fit on 2013–2021). **No test data.**
+  - Each set is B0 plus that set's features.
+- **Decision rule (fixed in advance):**
+  - A set **helps** if, for LightGBM, (i) its mean CV MAE is lower than B0's and (ii) the 95% paired-bootstrap CI of MAE(set) − MAE(B0), pooled over CV folds + 2022, lies entirely below 0.
+  - If ALL helps and has the lowest mean CV MAE, ALL becomes the new baseline. Otherwise the helping set with the lowest mean CV MAE does. If none helps, B0 stays.
+  - The ridge results and LightGBM − ridge differences are reported for every set but don't decide.
+- **Result:** not recorded yet (to be appended in a separate entry after the run).
+- **Evidence:** this entry is committed before the evaluation script runs (see git history).
+- **Paper relevance:** method (pre-registered feature evaluation).
 
 ---
 
