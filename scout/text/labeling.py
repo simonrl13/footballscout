@@ -1,9 +1,9 @@
 """Hand-check file for player links: sample 100 links, label them in a spreadsheet, then score precision.
 
-The CSV holds URLs, names and dates only (no article text): open each URL and check the named player.
+The CSV holds URLs, names and dates only (no document text): open each URL and check the named player.
 Usage:
-  uv run --env-file .env python -m scout.news.labeling sample   # -> labeling/links_v1.csv
-  uv run python -m scout.news.labeling score                    # after filling the `correct` column (y/n)
+  uv run --env-file .env python -m scout.text.labeling sample   # -> labeling/links_v1.csv
+  uv run python -m scout.text.labeling score                    # after filling the `correct` column (y/n)
 """
 import argparse
 import math
@@ -14,7 +14,7 @@ import pandas as pd
 from scout.data.manifest import ROOT
 
 FILE = ROOT / "labeling" / "links_v1.csv"
-COLUMNS = ["sample_id", "article_url", "published_date", "matched_name", "player_id", "player_name",
+COLUMNS = ["sample_id", "doc_url", "available_date", "matched_name", "player_id", "player_name",
            "club_at_date", "method", "transfermarkt_url", "correct", "note"]
 
 
@@ -52,18 +52,18 @@ def score(labeled: pd.DataFrame) -> pd.DataFrame:
 def _links_from_db() -> pd.DataFrame:
     from scout.data.raw import read_raw
     from scout.data.snapshots import club_at
-    from scout.news import store
-    from scout.news.linker import LINKER_VERSION
+    from scout.text import store
+    from scout.text.linker import LINKER_VERSION
     with store.connect() as c:
         df = pd.DataFrame(c.execute(
-            "SELECT m.article_id, a.url, a.published_at, m.player_id, m.method FROM news_mentions m "
-            "JOIN news_articles a USING (article_id) WHERE m.linker_version = %s", (LINKER_VERSION,)).fetchall(),
-            columns=["article_id", "article_url", "published_at", "player_id", "method"])
+            "SELECT m.doc_id, d.url, d.available_at, m.player_id, m.method FROM text_mentions m "
+            "JOIN text_documents d USING (doc_id) WHERE m.linker_version = %s", (LINKER_VERSION,)).fetchall(),
+            columns=["doc_id", "doc_url", "available_at", "player_id", "method"])
     raw = read_raw()
-    when = pd.to_datetime(df.published_at, utc=True).dt.tz_localize(None)
+    when = pd.to_datetime(df.available_at, utc=True).dt.tz_localize(None)
     players = pd.read_csv(ROOT / "data" / "raw" / "players.csv", usecols=["player_id", "name", "url"]).set_index("player_id")
     clubs = pd.read_csv(ROOT / "data" / "raw" / "clubs.csv", usecols=["club_id", "name"]).set_index("club_id").name
-    return df.assign(published_date=when.dt.date, matched_name=df.player_id.map(players.name),
+    return df.assign(available_date=when.dt.date, matched_name=df.player_id.map(players.name),
                      player_name=df.player_id.map(players.name), transfermarkt_url=df.player_id.map(players.url),
                      club_at_date=club_at(df.player_id, when, raw).map(clubs))
 

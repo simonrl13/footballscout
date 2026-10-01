@@ -1,6 +1,6 @@
 import pytest
 
-from scout.news import extract
+from scout.text import extract
 
 TEXT = "Kane limped off with a hamstring injury.\n\nTottenham have   extended Son's contract until 2026."
 
@@ -43,13 +43,13 @@ def test_request_uses_configured_model_and_schema():
 
 
 def test_switch_and_model_come_from_env(monkeypatch):
-    monkeypatch.delenv("NEWS_LLM_ENABLED", raising=False)
-    monkeypatch.delenv("NEWS_LLM_MODEL", raising=False)
+    monkeypatch.delenv("TEXT_LLM_ENABLED", raising=False)
+    monkeypatch.delenv("TEXT_LLM_MODEL", raising=False)
     assert not extract.enabled()
     with pytest.raises(RuntimeError):
         extract.model_name()
-    monkeypatch.setenv("NEWS_LLM_ENABLED", "true")
-    monkeypatch.setenv("NEWS_LLM_MODEL", "claude-haiku-4-5")
+    monkeypatch.setenv("TEXT_LLM_ENABLED", "true")
+    monkeypatch.setenv("TEXT_LLM_MODEL", "claude-haiku-4-5")
     assert extract.enabled() and extract.model_name() == "claude-haiku-4-5"
 
 

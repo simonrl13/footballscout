@@ -1,8 +1,8 @@
-"""Link player mentions in Guardian articles to player_ids: name + club + date, skipping ambiguous mentions.
+"""Link player mentions in public-text documents to player_ids: name + club + date, skipping ambiguous mentions.
 
 Point-in-time: a candidate must have a valuation in the LOOKBACK_DAYS before the article, and a shared name is
 resolved only by the candidate's club *at the article date* (scout.data.snapshots.club_at). Nothing after the
-article date is used. Works on article text (live-fetched, never stored) or on Guardian tags alone.
+document date is used. Works on document text, or on metadata tags alone (`tags`: [{id, type, webTitle}]).
 """
 import re
 import unicodedata
@@ -82,7 +82,7 @@ def find_name_spans(text: str, idx: Index) -> list[tuple[int, int, str]]:
 
 
 def article_clubs(text: str | None, tags: list[dict], idx: Index) -> set:
-    """Clubs named in the article: Guardian keyword tags (title or slug) plus club names in the text."""
+    """Clubs named in the document: metadata keyword tags (title or slug) plus club names in the text."""
     found = set()
     for t in tags:
         for raw_name in (t.get("webTitle") or "", (t.get("id") or "").split("/")[-1].replace("-", " ")):

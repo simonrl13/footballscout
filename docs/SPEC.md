@@ -25,18 +25,45 @@ to rise or fall in value.
 - transfermarkt-datasets by dcaribou (Kaggle: "Football Data from Transfermarkt"),
   CC0-1.0 license. Collection stopped mid-July 2026; valuations end 12 June 2026.
   Record the download date and file hash for reproducibility.
-- News (features + RAG): The Guardian Open Platform API, under these rules:
-  - Persist only article IDs, URLs, dates, tags and extracted signals.
-  - Headlines are article content: never stored (the 24-hour rule applies). Text search
-    without article text uses tags plus keywords from the URL slug.
-  - Never persist article text beyond 24 hours: a purge job, plus a test that
-    proves it.
-  - Fetch text live when an answer or citation needs it; cache it for at most
-    24 hours.
-  - Stay within 500 API calls per day.
-  - LLM processing of article text and stored embeddings can each be switched
-    off (`NEWS_LLM_ENABLED`, `EMBEDDINGS_ENABLED`) until the Guardian terms are
-    confirmed to allow them.
+- Public text (features + RAG), chosen 2026-10-01 after the Guardian was dropped
+  (its terms prohibit AI-related use). Evaluation: `reports/m3_sources.md`.
+  - **Wikipedia revision history + Wikidata** (LLM extraction track). Players are
+    mapped through Wikidata's Transfermarkt player ID (P2446) to their English
+    Wikipedia page. Features use the revision in force on each snapshot date (and
+    the one 365 days earlier), so text written after t is never read.
+    - Licenses: Wikipedia text CC BY-SA 4.0 (and GFDL); Wikidata CC0.
+    - Access: MediaWiki Action API, serial requests (1 at a time, < 5/s),
+      `maxlag`, and a User-Agent naming the tool and contact
+      (`ScoutResearchBot/… (https://github.com/simonrl13/footballscout; …)`).
+    - Storage: revision text may be stored (the license allows it), always with
+      its revision URL so attribution can be shown.
+  - **GDELT Global Knowledge Graph** (no-LLM "attention" track): mention counts,
+    tone and themes per player before each snapshot, from GKG records with
+    `DATE < t`.
+    - License: unrestricted use; any use or redistribution must cite the GDELT
+      Project and link to https://www.gdeltproject.org/.
+    - Coverage: GKG 2.0 from February 2015, so only snapshots from 2016 have a
+      full window.
+    - Storage: GDELT gives metadata only. Source articles are third-party: link
+      to them, never copy their text.
+- **Attribution and display rules** (agent answers, API responses, UI, reports):
+  - Never show long passages. Show a short summary (at most two sentences) or a
+    verbatim quote of at most 300 characters, marked as summarized or quoted.
+  - **Wikipedia:** link to the *specific revision*
+    (`https://en.wikipedia.org/w/index.php?oldid=<revid>`), name the page, and
+    add "Text from Wikipedia, CC BY-SA 4.0" with links to the license and to
+    the page history (authors). If the text is changed, say so. Excerpts shown
+    to users stay under CC BY-SA.
+  - **GDELT:** "Data: The GDELT Project (gdeltproject.org)" wherever
+    GDELT-derived numbers appear; link to the specific source article URL when
+    one is referenced.
+  - **Wikidata:** no attribution required (CC0); credit it as a courtesy.
+- Any LLM-extracted signal must carry an evidence quote that appears verbatim
+  in the source text, plus (for Wikipedia) an event date inside the 12 months
+  before the snapshot. Otherwise it is dropped. The extracting model may know
+  later outcomes, and this check is the guard.
+- LLM processing and stored embeddings stay switchable (`TEXT_LLM_ENABLED`,
+  `EMBEDDINGS_ENABLED`). Every bulk run needs a cost estimate approved first.
 - Caveat: Transfermarkt values are crowd-sourced estimates, not transfer fees.
 
 ## Baseline features (as of the snapshot date)
@@ -48,8 +75,14 @@ to rise or fall in value.
 - Club moves in the previous 12 months
 
 ## Planned additions
-- M3: LLM-extracted news features (injury, rumor, contract, manager change),
-  joined point-in-time, kept only if an ablation shows they help.
+- M3: public-text features, joined point-in-time and kept only if an ablation
+  shows they help:
+  - LLM-extracted Wikipedia signals (injury, transfer, contract, manager change,
+    each with an event date);
+  - GDELT attention features (mention counts, tone, themes).
+  - Planned comparison: baseline vs +GDELT vs +Wikipedia vs both. All arms use
+    2016–2024 snapshots (the GDELT window); Wikipedia alone is also reported on
+    2013–2024.
 
 ## Leakage rules
 - No feature may use data dated after the snapshot.
@@ -96,5 +129,6 @@ fine-tuning, a full frontend (thin UI only).
 
 ## Risks
 Data collection has stopped (no newer data); coverage gaps outside the
-chosen leagues; sparse news for non-English leagues; noise in crowd-sourced
-values.
+chosen leagues; noise in crowd-sourced values; Wikipedia edits lag real events;
+GDELT name matching needs a sports-context filter (39.8% of name matches in a
+sample had sports context).

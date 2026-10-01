@@ -1,6 +1,6 @@
 import pandas as pd
 
-from scout.news.linker import build_index, find_name_spans, fold, link_articles
+from scout.text.linker import build_index, find_name_spans, fold, link_articles
 
 D = pd.Timestamp
 
