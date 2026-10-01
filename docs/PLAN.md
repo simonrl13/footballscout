@@ -4,6 +4,20 @@ Written 2026-09-29, revised the same day to follow [SPEC.md](SPEC.md) and the de
 
 ---
 
+## 0.3 Decisions, round 4 (2026-10-01): approved plan
+
+| # | Block | Status |
+|---|---|---|
+| 1 | **Stats feature pass** (pre-registered, validation only): position percentiles, availability proxy, discipline, in-match injury records | **Done: negative result.** No set beats B0 (injury records and ALL are significantly worse), so B0 stays the baseline. `reports/m3_stats_pass.md` |
+| 2 | M4a: tools API + agent (number check) | next |
+| 3 | M5a: MCP server + text-free evals | after 2 |
+| 4 | **M3a Wikipedia:** background fetch approved (running); schema refocused (`extract-v2`: injuries with type/date/duration, contract extensions/expiry, loans, transfers; no rumours; own date + verbatim quote; 12-month window); **100-document pilot (< $1) → results + full-run estimate → your approval** | fetcher + pilot runner built and tested; **pilot blocked: the ANTHROPIC_API_KEY in .env is rejected (401)** |
+| 5 | M4b/M5b: Wikipedia text in the agent, citations, planted injection | after 4 |
+| 6 | **GDELT: out of scope** (SPEC "Future work"); no Google Cloud account | — |
+| 7 | M6 operations · M7 deploy | as planned |
+
+Claude API budget: up to US$10 per milestone for agent development and evals, estimated before each eval run. The Wikipedia full extraction is approved separately after the pilot.
+
 ## 0.2 Decisions, round 3 (2026-10-01)
 
 | Topic | Decision |

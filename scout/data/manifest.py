@@ -11,7 +11,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 RAW = ROOT / "data" / "raw"
 MANIFEST = ROOT / "data" / "manifest.json"
-FILES = ["players", "player_valuations", "appearances", "games", "clubs", "competitions", "transfers"]
+FILES = ["players", "player_valuations", "appearances", "games", "clubs", "competitions", "transfers",
+         "game_lineups", "game_events"]
 
 
 def git_commit() -> str:

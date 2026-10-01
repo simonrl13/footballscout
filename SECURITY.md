@@ -41,6 +41,7 @@ Please don't open a public issue. Use GitHub's private vulnerability reporting o
 
 ## Public-text source rules
 - No Guardian content: the integration was removed on 2026-10-01 (its terms prohibit AI-related use). A database check confirmed that nothing from it was ever stored.
+- **Wikipedia fetching:** Action API only, serial requests (< 5/s), `maxlag=5`, a 5 s wait after any response slower than 1 s, User-Agent `ScoutResearchBot/0.1 (https://github.com/simonrl13/footballscout; …)`; Wikidata SPARQL via POST in chunks of 500 IDs.
 - **Wikipedia (CC BY-SA 4.0):**
   - Every excerpt shown links to the exact revision and carries the license notice and a page-history link.
   - Excerpts are short (≤ 300 characters, or a ≤ 2-sentence summary).
@@ -57,6 +58,10 @@ Please don't open a public issue. Use GitHub's private vulnerability reporting o
 - **Claude Code guardrails (M1):** `.claude/settings.json` denies reading or editing `.env` files and key files, and requires approval for package installs and network commands. This is a guardrail for the coding assistant, not a hard boundary: the deny list can't cover every shell command that could print a file.
 - **Guardian removal (M3):** `tests/test_labeling_extract.py::test_old_guardian_tables_are_gone`. The M2 Guardian tests were removed with the integration.
 - **CodeQL (M2):** first scan found 10 alerts (3 medium supply-chain: Actions pinned by tag; 7 code quality). All fixed; 0 open.
+- **Wikipedia (M3a):**
+  - `tests/test_wikipedia.py`: markup is stripped and the User-Agent carries contact info.
+  - `tests/test_extract_wiki.py`: events are dropped if the quote isn't verbatim, the date is year-only, outside the window, or not written in the quote's sentence; rumours are not a type.
+  - `tests/test_wiki_run.py`: end-to-end with a fake Batch client.
 - **Text pipeline (M3):**
   - `tests/test_labeling_extract.py`: the extraction runner verifies quotes and caches by prompt version.
   - `tests/test_extract.py`: invented or paraphrased quotes are dropped, and the switch and model come from env.

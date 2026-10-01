@@ -12,7 +12,7 @@ def read_raw(check_manifest: bool = True) -> dict[str, pd.DataFrame]:
                                  "away_club_id", "home_club_goals", "away_club_goals"])
     apps = pd.read_csv(RAW / "appearances.csv", parse_dates=["date"],
                        usecols=["game_id", "player_id", "player_club_id", "date", "competition_id", "minutes_played",
-                                "goals", "assists"])
+                                "goals", "assists", "yellow_cards", "red_cards"])
     return {
         # position is the player's current value (rarely changes); date_of_birth is static
         "players": pd.read_csv(RAW / "players.csv", parse_dates=["date_of_birth"],
@@ -24,4 +24,8 @@ def read_raw(check_manifest: bool = True) -> dict[str, pd.DataFrame]:
                        .rename(columns={"transfer_date": "date"}),
         "appearances": apps.merge(games[["game_id", "season"]], on="game_id", how="left"),
         "games": games,
+        # match-day squads (starting XI + bench) and in-match events, for the stats feature pass
+        "lineups": pd.read_csv(RAW / "game_lineups.csv", usecols=["game_id", "player_id", "club_id"]),
+        "events": pd.read_csv(RAW / "game_events.csv", usecols=["game_id", "type", "player_id", "description"])
+                    .query("type == 'Substitutions'").drop(columns="type"),
     }
