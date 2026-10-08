@@ -314,6 +314,16 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 
 ---
 
+### 2026-10-08 — RESULT: extract-v2 pilot on Wikipedia (Milestone M3a)
+- **Question:** Does extract-v2 (dated career events with verbatim quotes from the text new on a player's Wikipedia page during the year before a snapshot) yield usable signals, at what cost, and how much does the same-sentence year rule drop?
+- **What we tried:** 100 documents sampled (seed 20261001) from the player-years fetched so far; `claude-haiku-4-5` on the Batch API; every event verified (verbatim quote ≤ 300 chars, day/month date inside [t − 1 year, t), event year in the quote's own sentence). Raw outputs stored so rules can be re-checked offline.
+- **Result:** cost $0.11 (141,695 input / 17,079 output tokens). 33 of the 100 documents turned out not to be labelled snapshots (a runner bug, now fixed). On the 67 labelled ones: 157 events returned, 28 kept (0.42 per player-year), mostly transfers and contracts; only 1 injury was kept in the whole pilot. Drops: outside the window 87, year-only date 31, same-sentence year rule 7 (20% of events that pass every other check), quote not verbatim 4. Refined full-run estimate ≈ $26 on the Batch API.
+- **Decision:** No full run until the credit top-up and the owner's OK. The year rule is unchanged; a stricter-than-paragraph alternative (nearest preceding year in the paragraph, or the season heading) is proposed in `reports/m3a_pilot.md` and recovers 6 of the 7 labelled drops on the pilot while still dropping a likely model-chosen date.
+- **Evidence:** `reports/m3a_pilot.md` (batch `msgbatch_01JevMwKwG76ffgdnNjgihaB`); `scout/text/wiki_run.py`, `scout/text/extract_wiki.py`; `tests/test_wiki_run.py`, `tests/test_extract_wiki.py`.
+- **Paper relevance:** The verification rules work as hindsight guards: one drop is a date the model seems to have chosen to fit the window. Signal density is low and skewed toward transfers and contracts, which the model already partly sees through valuations and club moves; Wikipedia rarely dates injuries to the month. The sample over-represents 2012–2015 and veteran players (the fetcher is still running), so densities may differ in the full set.
+
+---
+
 ## Paper notes
 
 ### Candidate contributions

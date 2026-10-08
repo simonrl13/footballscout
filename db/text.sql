@@ -61,3 +61,4 @@ ALTER TABLE text_signals ADD COLUMN IF NOT EXISTS event_date date;
 ALTER TABLE text_signals ADD COLUMN IF NOT EXISTS date_precision text;    -- day | month
 ALTER TABLE text_signals ADD COLUMN IF NOT EXISTS attributes jsonb;       -- injury_type, duration_days
 ALTER TABLE text_documents ADD COLUMN IF NOT EXISTS body text;            -- stored for CC BY-SA sources only
+ALTER TABLE text_extractions ADD COLUMN IF NOT EXISTS output jsonb;    -- raw model output: re-verify without re-calling
