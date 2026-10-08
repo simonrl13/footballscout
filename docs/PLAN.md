@@ -12,8 +12,8 @@ Claude API credit is about US$5 until a top-up, so nothing may wait on the full 
 |---|---|---|
 | 1 | Key-exposure incident (2026-10-01): key revoked and reissued, `scout/check_env.py` | **Closed** (SECURITY.md, PR #12) |
 | 2 | extract-v2 pilot: 100 documents, < US$1 | **Done** ($0.11): 0.42 kept events per player-year, few injuries; year-rule alternative proposed (`reports/m3a_pilot.md`) |
-| 3 | **M4a: tools API + agent, no text** (scope as in §0.3 block 2). Real API spend ≈ US$3: fake clients in tests, the cheapest suitable model during development, cached responses; ask before any batch of calls over US$0.50 | next |
-| 4 | **M5a: MCP server + text-free evals** | after 3 |
+| 3 | **M4a: tools API + agent, no text** (scope as in §0.3 block 2). Real API spend ≈ US$3: fake clients in tests, the cheapest suitable model during development, cached responses; ask before any batch of calls over US$0.50 | **Done** (2026-10-08; about US$0.05 of live calls) |
+| 4 | **M5a: MCP server + text-free evals** | next |
 | 5 | **Wikipedia parts that need no extracted signals:** revision retrieval for the agent (`search_text` over stored revisions), CC BY-SA citations (exact revision link + license notice), planted-injection revision in the golden set | after 4 |
 | 6 | Wikipedia full extraction (≈ US$26 after the pilot), then text features and M4b signals | **waits for the credit top-up and your OK** |
 | 7 | M6 operations · M7 deploy | as planned |
