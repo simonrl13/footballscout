@@ -117,14 +117,16 @@ def main() -> None:
     model = extract.model_name()
     with store.connect() as conn:
         store.ensure_schema(conn)
-        py = player_years(conn)
+        labelled = labelled_player_years()
+        py = player_years(conn).merge(labelled, on=["player_id", "t"])  # previous-year revisions are context, not documents
         if args.pilot:
             py = py.sample(min(args.pilot * 2, len(py)), random_state=20261001)  # oversample: empty diffs are skipped
         built = derived_docs(conn, py)
         docs = [d for d in built if d["text"].strip()]
         n_full = None
         if args.pilot:
-            n_full = round(total_player_years(conn) * len(docs) / len(built))  # all labelled player-years × non-empty share
+            mapped = {r[0] for r in conn.execute("SELECT player_id FROM wikidata_players WHERE enwiki_title IS NOT NULL")}
+            n_full = round(labelled.player_id.isin(mapped).sum() * len(docs) / len(built))  # all labelled player-years × non-empty share
             docs = docs[:args.pilot]
         else:
             est = estimate_full(conn, len(docs), model)
@@ -135,13 +137,12 @@ def main() -> None:
         print({k: v for k, v in stats.items() if k != "dropped"}, stats.get("dropped"))
 
 
-def total_player_years(conn) -> int:
-    """Labelled snapshot player-years whose player has an English Wikipedia page (fetched or not yet)."""
+def labelled_player_years() -> pd.DataFrame:
+    """(player_id, t) for every labelled snapshot (the model's population with a target)."""
     from scout.data.raw import read_raw
     from scout.data.snapshots import YEARS, build_snapshots
-    mapped = {r[0] for r in conn.execute("SELECT player_id FROM wikidata_players WHERE enwiki_title IS NOT NULL").fetchall()}
     s = build_snapshots(read_raw(), years=YEARS)
-    return int(s[s.target.notna()].player_id.isin(mapped).sum())
+    return s.loc[s.target.notna(), ["player_id", "date"]].rename(columns={"date": "t"})
 
 
 def estimate_full(conn, n_docs: int, model: str) -> float:
