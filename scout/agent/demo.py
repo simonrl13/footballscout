@@ -26,7 +26,8 @@ def build(raw: dict, run: dict) -> pd.DataFrame:
     clubs = pd.read_csv(RAW / "clubs.csv", usecols=["club_id", "name"]).set_index("club_id").name
     names = raw["players"].set_index("player_id").name
     return pd.DataFrame({
-        "player_id": s.player_id.astype(int), "name": s.player_id.map(names), "name_search": s.player_id.map(names).map(fold), "as_of": DEMO_AS_OF.date(),
+        "player_id": s.player_id.astype(int), "name": s.player_id.map(names),
+        "name_search": s.player_id.map(names).map(fold), "as_of": DEMO_AS_OF.date(),
         "club": s.club_id.map(clubs), "league": s.league, "position": X.position, "sub_position": X.sub_position,
         "age": X.age.round(1), "value_eur": s.value_now.astype("int64"), "value_date": s.value_now_date.dt.date,
         "predicted_log_change": [e["predicted_log_change"] for e in out],

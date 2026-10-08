@@ -111,3 +111,15 @@ def test_target_dropped_without_a_new_valuation():
     s = build_snapshots(base_raw(), years=[Y])
     assert s.iloc[0].value_next == 2_000_000  # the as-of value exists, but it's the same old valuation
     assert np.isnan(s.iloc[0].target)
+
+
+def test_demo_as_of_date_ignores_data_after_it():
+    """Demo snapshots (e.g. 12 June) use the same point-in-time rules with t = `at`."""
+    at = d(f"{Y}-06-12")
+    r = with_future(base_raw())
+    r["valuations"].loc[len(r["valuations"])] = (1, d(f"{Y}-06-13"), 9_000_000, 20)
+    r["transfers"].loc[len(r["transfers"])] = (1, d(f"{Y}-07-01"), 10, 20)
+    s0 = build_snapshots(base_raw(), years=[Y], with_target=False, at=at)
+    s1 = build_snapshots(r, years=[Y], with_target=False, at=at)
+    assert (s0.date == at).all() and s0.value_now.tolist() == [2_000_000]
+    pd.testing.assert_frame_equal(build_features(s0, base_raw())[FEATURES], build_features(s1, r)[FEATURES])

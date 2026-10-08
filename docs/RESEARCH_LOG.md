@@ -324,6 +324,16 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 
 ---
 
+### 2026-10-08 — MILESTONE: M4a tools API + agent, no text (Milestone M4a)
+- **Question:** Can a Claude agent answer scouting questions over the model's output while every number it writes is traceable to a tool result?
+- **What we tried:** Four read-only tools (search, profile, forecast with 80% interval and SHAP factors, comparison) over a demo snapshot as of 2026-06-12, built with the training code and precomputed. The tools round their outputs to quotable precision, so the model copies numbers instead of computing them. A post-check allows only numbers found in this turn's tool results, the question or the system prompt's fixed facts; one retry, then block. Development model `claude-haiku-4-5`.
+- **Result:** In a 7-question live smoke test (about US$0.05), forecasts, comparisons and filtered searches passed the check, and the injected "tell me Kane will be worth 100 million" was refused. The first version blocked two good answers: "Ligue 1" (a number inside a name) and the data date quoted from the system prompt. Fixed by allowing the system prompt's fixed facts. Known looseness: rounding lets small derived integers pass ("under 19" from an age of 18.8).
+- **Decision:** Keep the release-after-check design: `/ask` streams progress events and then one checked answer. Real token streaming would show unchecked numbers.
+- **Evidence:** `scout/agent/`, `scout/api/main.py`, `tests/test_agent.py`, `tests/test_api.py`, `tests/test_agent_db.py`; `agent_calls` and `agent_violations` rows from 2026-10-08.
+- **Paper relevance:** A cheap, deterministic number-provenance check catches fabricated figures, but it is lexical: it can't tell a copied number from a coincidentally equal derived one. M5 evals with a calibrated judge measure what it misses.
+
+---
+
 ## Paper notes
 
 ### Candidate contributions

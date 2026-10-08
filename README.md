@@ -1,6 +1,6 @@
 # Scout — football player value forecasting + scouting agent
 
-Forecasts how a player's Transfermarkt market value will change over the next 12 months, with SHAP explanations. The model will be exposed through a Claude tool-calling agent with retrieval over public text (Wikipedia revisions, GDELT metadata; later milestones).
+Forecasts how a player's Transfermarkt market value will change over the next 12 months, with SHAP explanations. A Claude tool-calling agent answers questions over the model's output (M4a); retrieval over Wikipedia revisions comes later.
 
 > Values are Transfermarkt crowd-sourced estimates, **not transfer fees**.
 
@@ -9,8 +9,9 @@ Forecasts how a player's Transfermarkt market value will change over the next 12
 ## Status
 - [x] **M1** — data pipeline rebuilt to the SPEC, point-in-time features with leakage tests, baselines, test-set gate, reproducibility, DB roles, security gates
 - [x] **M2** — MLflow tracking, validation-only tuning pass, 80% prediction intervals (split-conformal), excluded-share report (a Guardian client was built in M2 and removed in M3; nothing was ever fetched)
-- [ ] **M3 (in progress)** — *Stats feature pass (pre-registered): negative, B0 stays the baseline ([reports/m3_stats_pass.md](reports/m3_stats_pass.md)). Wikipedia revision fetch running; `extract-v2` pilot ready.* Public-text features. The Guardian was dropped (its terms prohibit AI use; nothing was stored). Sources evaluated read-only: Wikipedia revision history + Wikidata (LLM track) and GDELT (attention track); see [reports/m3_sources.md](reports/m3_sources.md). Source-agnostic linker, extraction with verbatim-quote checks, and point-in-time features are built and tested offline.
-- [ ] M4 — retrieval + agent · M5 — evals + MCP · M6 — ops · M7 — AWS deploy
+- [ ] **M3 (in progress)** — *Stats feature pass (pre-registered): negative, B0 stays the baseline ([reports/m3_stats_pass.md](reports/m3_stats_pass.md)). Wikipedia revision fetch running; `extract-v2` pilot done ($0.11, [reports/m3a_pilot.md](reports/m3a_pilot.md)); full extraction waits for budget.* Public-text features. The Guardian was dropped (its terms prohibit AI use; nothing was stored). Sources evaluated read-only: Wikipedia revision history + Wikidata (LLM track) and GDELT (attention track); see [reports/m3_sources.md](reports/m3_sources.md). Source-agnostic linker, extraction with verbatim-quote checks, and point-in-time features are built and tested offline.
+- [x] **M4a** — tools API + Claude agent (no text yet): 4 read-only tools, number check with retry/block, US$2/day spend cap, per-call traces. See [Agent (M4a)](#agent-m4a).
+- [ ] M5a — MCP server + text-free evals · Wikipedia retrieval and citations · M4b/M5b — text in the agent · M6 — ops · M7 — AWS deploy
 
 ## Problem (from the SPEC)
 - **Unit:** one player on **1 September** each year, 2013–2024.
@@ -31,7 +32,8 @@ docker compose up -d db       # Postgres 16 + pgvector, bound to 127.0.0.1
 ```
 On first start the database creates two roles (see [db/init/02-roles.sh](db/init/02-roles.sh)):
 - `scout_loader` creates and loads the tables.
-- `scout_reader` can only read them, and is the only role the API (and later the agent and MCP server) gets.
+- `scout_reader` can only read them, and is the only role the API, agent (and later the MCP server) get for data.
+- `scout_tracer` ([db/init/04-tracer.sh](db/init/04-tracer.sh)) can only read and append the agent's trace tables. On an existing volume, create it with `uv run python -m scout.agent.setup` (it also appends a random API token and `AGENT_MODEL` to `.env`, printing no values).
 
 ## Run
 ```sh
@@ -45,9 +47,30 @@ uv run --env-file .env python -m scout.text.wikipedia   # Wikipedia revisions at
 TEXT_LLM_ENABLED=true TEXT_LLM_MODEL=claude-haiku-4-5 uv run --env-file .env python -m scout.text.wiki_run --pilot 100
 uv run --env-file .env python -m scout.text.labeling sample   # 100 links to hand-check → labeling/links_v1.csv
 uv run python -m scout.text.labeling score               # precision with 95% CI after labelling
+uv run --env-file .env python -m scout.agent.demo       # demo predictions as of 2026-06-12 → demo_players
+uv run --env-file .env python -m scout.agent.agent "How will Harry Kane's value change?"   # agent in the terminal
+uv run --env-file .env uvicorn scout.api.main:app --host 127.0.0.1   # API (Bearer SCOUT_API_TOKEN)
 uv run --env-file .env pytest                            # all tests (DB tests skip without the DB)
 ```
 Trained models go to `models/<run_id>/`, which is never overwritten; `models/LATEST` names the current run. Reports go to [reports/](reports/).
+
+## Agent (M4a)
+A Claude tool-calling agent over four read-only tools, also exposed as REST endpoints (all need `Authorization: Bearer $SCOUT_API_TOKEN`):
+
+| Tool | Endpoint | Returns |
+|---|---|---|
+| `search_players` | `GET /players/search` | players by name (accents optional) and filters: league, position, age, value; sorted by forecast or value; ≤ 20 |
+| `get_player` | `GET /players/{id}` | club, league, position, age, Transfermarkt value and its date |
+| `predict_value_change` | `GET /players/{id}/forecast` | 12-month forecast (%), 80% interval, implied values, top 5 SHAP factors |
+| `compare_players` | `POST /players/compare` | 2–5 players side by side |
+| (agent) | `POST /ask` | server-sent events: tool calls, then one checked answer |
+
+- **Data:** the demo snapshot is **12 June 2026**, the last valuation date in the data, built with the same point-in-time code as training (`build_snapshots(..., at=...)`) and precomputed into `demo_players`. The model was trained on 1-September snapshots, so June forecasts are a demo, and every tool result says so.
+- **Number check:** every number in an answer must appear in this turn's tool results, the question or the fixed facts in the system prompt (data date, horizon, interval level, league names). On a violation the agent gets one retry with feedback; if it fails again, the answer is blocked. Both cases are logged in `agent_violations`. The answer is therefore released only after the check: `/ask` streams progress events, not raw tokens.
+- **Guardrails:** Pydantic models with limits (unknown fields rejected) for every tool and endpoint; parameterized SQL with `psycopg.sql` identifiers; read-only role and read-only transactions; max 6 model calls and 1,024 output tokens per call; **US$2/day spend cap** across all agent calls, checked before each call.
+- **Observability:** one `agent_calls` row per model call (tokens, cost, latency, requested tools, cache hit). `AGENT_CACHE=true` serves identical requests from `agent_cache` (development and evals).
+- **Model:** `AGENT_MODEL` from `.env` (development: `claude-haiku-4-5`). Development spend so far: about US$0.05.
+- **Not yet:** Wikipedia text and citations (after M5a), rate limits (M6), MCP (M5a).
 
 ## How the data is built (M1)
 **Club on 1 September.** The SPEC's plan was to rebuild club membership from `transfers`. That table turned out to be incomplete before about 2021: in the 2013 check, 77% of players had no transfer row at all. The club is instead the **most recent** of three point-in-time records dated on or before the snapshot: the last league appearance, the last transfer, and the club recorded on the last valuation. Matched against the club each player actually played for in the next 60 days ([reports/m1_data.md](reports/m1_data.md)):

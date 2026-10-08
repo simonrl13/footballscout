@@ -14,8 +14,12 @@ services:
   api:
     build: .
     environment:
-      # the API only ever gets the read-only role
+      # the API gets the read-only role for data and the trace-only role for agent traces
       READER_DATABASE_URL: postgresql://scout_reader:${SCOUT_READER_PASSWORD}@db:5432/${POSTGRES_DB}
+      TRACER_DATABASE_URL: postgresql://scout_tracer:${SCOUT_TRACER_PASSWORD}@db:5432/${POSTGRES_DB}
+      SCOUT_API_TOKEN: ${SCOUT_API_TOKEN}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      AGENT_MODEL: ${AGENT_MODEL}
     ports: ["127.0.0.1:8000:8000"]
     depends_on:
       db: { condition: service_healthy }

@@ -19,10 +19,10 @@ DEMO_AS_OF = "2026-06-12"
 LEAGUE_NAMES = {"GB1": "Premier League", "ES1": "LaLiga", "L1": "Bundesliga", "IT1": "Serie A", "FR1": "Ligue 1",
                 "NL1": "Eredivisie", "PO1": "Liga Portugal"}
 FEATURE_LABELS = {
-    "age": "age (years)", "log_value_now": "current market value (log EUR)",
-    "value_change_12m": "value change over the last 12 months (log)", "prev_minutes": "league minutes last season",
+    "age": "age (years)", "log_value_now": "current market value",
+    "value_change_12m": "value change over the last 12 months", "prev_minutes": "league minutes last season",
     "prev_apps": "league appearances last season", "prev_ga_per90": "goals + assists per 90 last season",
-    "share_team_minutes": "share of the club's league minutes last season", "log_squad_value": "club squad value (log EUR)",
+    "share_team_minutes": "share of the club's league minutes last season", "log_squad_value": "club squad value",
     "club_moves_12m": "club moves in the last 12 months", "position": "position", "sub_position": "detailed position",
     "league": "league",
 }
@@ -95,11 +95,22 @@ def _forecast(r: dict) -> dict:
         "implied_value_eur_m": {"predicted": _m(v * math.exp(r["predicted_log_change"])),
                                 "low": None if lo is None else _m(v * math.exp(lo)),
                                 "high": None if hi is None else _m(v * math.exp(hi))},
-        "top_factors": [{"factor": FEATURE_LABELS.get(f["feature"], f["feature"]),
-                         "player_value": round(f["value"], 2) if isinstance(f["value"], float) else f["value"],
+        "top_factors": [{"factor": FEATURE_LABELS.get(f["feature"], f["feature"]), "player_value": _readable(f),
                          "effect": "raises" if f["shap"] > 0 else "lowers", "shap_log": round(f["shap"], 3)}
                         for f in r["factors"]],
     }
+
+
+def _readable(f: dict):
+    """Factor values as an answer would quote them: log values back to EUR millions / %, league codes to names."""
+    v = f["value"]
+    if v is None or isinstance(v, str):
+        return LEAGUE_NAMES.get(v, v)
+    if f["feature"] in ("log_value_now", "log_squad_value"):
+        return f"EUR {_m(math.exp(v))}m"
+    if f["feature"] == "value_change_12m":
+        return f"{_pct(v)}%"
+    return round(v, 2)
 
 
 def _rows(conn, where: sql.Composable, params: tuple, tail: sql.Composable = sql.SQL("")) -> list[dict]:
@@ -140,7 +151,9 @@ def search_players(conn, a: Search) -> dict:
     tail = sql.SQL(" ORDER BY {} {}, player_id LIMIT %s").format(sql.Identifier(col), sql.SQL(direction))
     rows = _rows(conn, sql.SQL(" AND ").join(where), (*params, a.limit), tail)
     return {"count": len(rows),
-            "players": [{**_profile(r), "predicted_change_pct": _pct(r["predicted_log_change"])} for r in rows],
+            "players": [{**_profile(r), "predicted_change_pct": _pct(r["predicted_log_change"]),
+                         "interval_80_pct": {"low": _pct(r["interval_low_log"]), "high": _pct(r["interval_high_log"])}}
+                        for r in rows],
             "source": SOURCE}
 
 

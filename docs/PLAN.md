@@ -235,11 +235,11 @@ Effort: S = up to 3 h, M = 3–8 h, L = more than 8 h.
 - [ ] Comparison on validation: baseline vs +GDELT vs +Wikipedia vs both (2016–2024 for all arms), then the milestone's single logged test run
 
 ### M4: tools API and agent (reordered: M4a now, M4b after M3a)
-- [ ] **M4a:**
-  - FastAPI tools `get_player`, `predict_value_change`, `search_players`, `compare_players` (Pydantic, limits, `scout_reader`)
-  - Demo snapshots as of 2026-06-12
-  - Streaming agent (model from env); number check + violation log; Transfermarkt caveat
-  - US$2/day spend cap; per-call trace rows
+- [x] **M4a** (2026-10-08):
+  - FastAPI tools `get_player`, `predict_value_change`, `search_players`, `compare_players` (Pydantic, limits, `scout_reader`, read-only transactions); bearer-token auth
+  - Demo snapshots as of 2026-06-12, precomputed into `demo_players` with the training code path
+  - Agent (model from `AGENT_MODEL`); number check with one retry, then block, both logged; Transfermarkt caveat. Streaming = progress events + the checked answer (raw tokens can't be streamed before the check)
+  - US$2/day spend cap; one `agent_calls` row per model call; `scout_tracer` role; dev response cache
 - [ ] **M4b:** `search_text` over Wikipedia revisions (filters, recency, attribution per SPEC); `[model]` / `[wiki n]` labels; Voyage embeddings only if `EMBEDDINGS_ENABLED`, otherwise full text search (titles are fine: Wikipedia is CC BY-SA)
 
 ### M5: evals, CI evals, MCP (Nov 2–8)
