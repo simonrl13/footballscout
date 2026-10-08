@@ -97,17 +97,18 @@ def club_match_rates(raw: dict, years=YEARS) -> pd.DataFrame:
 
 
 def build_snapshots(raw: dict, years=YEARS, club_method: str = CLUB_METHOD, with_target: bool = True,
-                    min_prev_minutes: int = MIN_PREV_MINUTES) -> pd.DataFrame:
+                    min_prev_minutes: int = MIN_PREV_MINUTES, at: pd.Timestamp | None = None) -> pd.DataFrame:
     """Population snapshots (one row per player and year) with current value and, optionally, the target.
 
     Population: >= MIN_PREV_MINUTES league minutes in LEAGUES in the previous season, club at t in LEAGUES,
-    and a positive valuation on or before t.
+    and a positive valuation on or before t. `at` replaces 1 September as t (demo snapshot: years=[2026],
+    at=2026-06-12, so the previous season is 2025/26).
     """
     v = raw["valuations"][raw["valuations"].market_value_in_eur > 0].rename(columns={"market_value_in_eur": "value"})
     apps, lg = raw["appearances"], league_games(raw["games"])
     out = []
     for y in years:
-        t = snapshot_date(y)
+        t = at if at is not None else snapshot_date(y)
         prev = apps[apps.competition_id.isin(LEAGUES) & (apps.season == y - 1) & (apps.date < t)]
         mins = prev.groupby("player_id").minutes_played.sum()
         s = pd.DataFrame({"player_id": mins.index[mins >= min_prev_minutes]})
