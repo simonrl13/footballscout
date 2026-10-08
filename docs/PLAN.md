@@ -4,6 +4,22 @@ Written 2026-09-29, revised the same day to follow [SPEC.md](SPEC.md) and the de
 
 ---
 
+## 0.4 Decisions, round 5 (2026-10-08): budget-driven order
+
+Claude API credit is about US$5 until a top-up, so nothing may wait on the full Wikipedia extraction (~US$24).
+
+| # | Block | Status |
+|---|---|---|
+| 1 | Key-exposure incident (2026-10-01): key revoked and reissued, `scout/check_env.py` | **Closed** (SECURITY.md, PR #12) |
+| 2 | extract-v2 pilot: 100 documents, < US$1 | this PR (`reports/m3a_pilot.md`) |
+| 3 | **M4a: tools API + agent, no text** (scope as in §0.3 block 2). Real API spend ≈ US$3: fake clients in tests, the cheapest suitable model during development, cached responses; ask before any batch of calls over US$0.50 | next |
+| 4 | **M5a: MCP server + text-free evals** | after 3 |
+| 5 | **Wikipedia parts that need no extracted signals:** revision retrieval for the agent (`search_text` over stored revisions), CC BY-SA citations (exact revision link + license notice), planted-injection revision in the golden set | after 4 |
+| 6 | Wikipedia full extraction (~US$24, refined by the pilot), then text features and M4b signals | **waits for the credit top-up and your OK** |
+| 7 | M6 operations · M7 deploy | as planned |
+
+Unchanged: the same-sentence year rule stays as is unless you approve an alternative proposed from the pilot.
+
 ## 0.3 Decisions, round 4 (2026-10-01): approved plan
 
 | # | Block | Status |
@@ -11,7 +27,7 @@ Written 2026-09-29, revised the same day to follow [SPEC.md](SPEC.md) and the de
 | 1 | **Stats feature pass** (pre-registered, validation only): position percentiles, availability proxy, discipline, in-match injury records | **Done: negative result.** No set beats B0 (injury records and ALL are significantly worse), so B0 stays the baseline. `reports/m3_stats_pass.md` |
 | 2 | M4a: tools API + agent (number check) | next |
 | 3 | M5a: MCP server + text-free evals | after 2 |
-| 4 | **M3a Wikipedia:** background fetch approved (running); schema refocused (`extract-v2`: injuries with type/date/duration, contract extensions/expiry, loans, transfers; no rumours; own date + verbatim quote; 12-month window); **100-document pilot (< $1) → results + full-run estimate → your approval** | fetcher + pilot runner built and tested; **pilot blocked: the ANTHROPIC_API_KEY in .env is rejected (401)** |
+| 4 | **M3a Wikipedia:** background fetch approved (running); schema refocused (`extract-v2`: injuries with type/date/duration, contract extensions/expiry, loans, transfers; no rumours; own date + verbatim quote; 12-month window); **100-document pilot (< $1) → results + full-run estimate → your approval** | fetcher + pilot runner built and tested; superseded by §0.4 |
 | 5 | M4b/M5b: Wikipedia text in the agent, citations, planted injection | after 4 |
 | 6 | **GDELT: out of scope** (SPEC "Future work"); no Google Cloud account | — |
 | 7 | M6 operations · M7 deploy | as planned |
