@@ -23,7 +23,8 @@ Please don't open a public issue. Use GitHub's private vulnerability reporting o
 ### Incident log
 - **2026-10-01: Anthropic API key exposed in a session transcript.**
   - **What happened:** a `.env` line was missing its `=` (`ANTHROPIC_API_KEY<value>`). `uv run --env-file .env` could not parse it, and its warning printed the whole line, value included, into Claude Code's tool output. The parse failure also stopped every later variable from loading.
-  - **Response:** the owner was asked to revoke the key and issue a new one (status: pending confirmation). `scout/check_env.py` was added so `.env` syntax can be checked without printing content.
+  - **Cause:** a malformed `.env` line, echoed in full by uv's `.env` parser warning.
+  - **Response (closed):** the owner revoked the exposed key in the Console and issued a new one with a 90-day expiry. The fix is `scout/check_env.py`, which checks `.env` syntax without printing content; it reports `.env: OK` with the new key in place.
   - **Not affected:** git (`.env` is gitignored; gitleaks found nothing), CI and the deployed services (none exist yet).
 
 ## Likely attackers and entry points
