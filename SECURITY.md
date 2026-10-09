@@ -42,6 +42,7 @@ Please don't open a public issue. Use GitHub's private vulnerability reporting o
 |---|---|---|
 | Secrets only in `.env`; gitleaks pre-commit + CI; no secrets in logs or prompts | M1 | LLM02, LLM07 |
 | Postgres bound to 127.0.0.1; password from `.env` | M1 | — |
+| Each container gets only its own variables: the db service gets the Postgres admin settings and the role passwords used by `db/init`, never API keys or app tokens; the api service gets its two DB URLs, the API token, the Anthropic key and the model name | M4a (2026-10-09) | LLM02 |
 | DB roles: `scout_loader` (write), `scout_reader` (read-only, used by the API, agent and MCP; tool queries also run in read-only transactions) and `scout_tracer` (SELECT/INSERT on the `agent_*` tables only) | M1, M4a | LLM06, ASI03 |
 | Bearer-token auth on every endpoint except `/health` (constant-time compare; no token configured = no access) | M4a | LLM06 |
 | Parameterized SQL; identifiers via `psycopg.sql.Identifier`; CSV columns allow-listed against the schema | M1 | LLM05, ASI02 |
@@ -85,6 +86,7 @@ Please don't open a public issue. Use GitHub's private vulnerability reporting o
   - `tests/test_labeling_extract.py`: the extraction runner verifies quotes and caches by prompt version.
   - `tests/test_extract.py`: invented or paraphrased quotes are dropped, and the switch and model come from env.
   - `tests/test_text_features.py`: documents available on or after t change nothing.
+- **Container environment (2026-10-09):** `tests/test_compose.py` fails if the db service uses `env_file` or gets any variable outside its allow-list, or if a `db/init` script reads a variable the service doesn't get. Before the fix, `docker inspect` of the running db container listed `ANTHROPIC_API_KEY` and the app's database URLs (names checked, values never printed).
 - **API and agent (M4a):**
   - `tests/test_api.py`: every data endpoint returns 401 without the right token (or with no token configured); invalid input is rejected with 422 (bad ids, out-of-range limits, unknown leagues, unknown query fields, oversized questions, extra body fields such as `model`).
   - `tests/test_agent.py` (fake Claude client): unsupported numbers trigger one retry and then a block, both logged; the spend cap refuses before any API call; invalid tool input is returned to the model as an error and never executed; the loop stops after 6 calls.
@@ -95,7 +97,6 @@ Please don't open a public issue. Use GitHub's private vulnerability reporting o
 ## Known limitations
 - Text documents are written with the loader role. The API and agent will only read them (`scout_reader`).
 - `.claude/settings.json` guards the coding assistant, not the machine: shell commands outside its deny list could still read `.env`. Tools that load `.env` (e.g. `uv --env-file`) may echo malformed lines in warnings (see the incident log).
-- `docker-compose.yml` gives the db service the whole `.env` (`env_file`), API key included. To fix before the M7 deploy: pass only the variables Postgres needs.
 - No rate limits yet (M6); the spend cap is the only limit on `/ask`.
 - The number check allows a number if some source number rounds to it, so small derived integers ("under 19" from an age of 18.8) can pass. Evals with an LLM judge (M5) cover derived claims.
 - The rest is completed in M6.

@@ -1,7 +1,16 @@
 services:
   db:
     image: pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b
-    env_file: .env
+    # Only what Postgres and the db/init scripts need (role passwords are used on first init). Never the whole .env:
+    # API keys and app tokens must not reach this container.
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set in .env}
+      SCOUT_LOADER_PASSWORD: ${SCOUT_LOADER_PASSWORD:?set in .env}
+      SCOUT_READER_PASSWORD: ${SCOUT_READER_PASSWORD:?set in .env}
+      SCOUT_MLFLOW_PASSWORD: ${SCOUT_MLFLOW_PASSWORD:?set in .env}
+      SCOUT_TRACER_PASSWORD: ${SCOUT_TRACER_PASSWORD:?set in .env}
     ports: ["127.0.0.1:5432:5432"]  # never exposed beyond this machine
     volumes:
       - pgdata:/var/lib/postgresql/data
