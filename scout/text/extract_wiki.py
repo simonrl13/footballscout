@@ -6,8 +6,12 @@ Every event needs its own date and a verbatim quote. It is dropped if:
 - the quote is not in the document;
 - the date is year-only (too coarse for a 12-month window);
 - the date is outside [previous 1 Sep, snapshot 1 Sep);
-- the event's year does not appear in the quote's own sentence (the document has one sentence per line). This guards
-  against the model dating an event from its own knowledge.
+- the event's year is not supported by the text (guards against the model dating an event from its own knowledge).
+  Supported means (rule "context-year", 2026-10-09): the year is written in the quote's own sentence (the document has
+  one sentence per line); or the sentence has its own date anchor (a month name, or "the following month", "the same
+  day", "afterwards", ...) and, in the full revision, the year is the nearest year mentioned earlier in the sentence's
+  paragraph or is named by the nearest preceding heading as a season ("2016–17" names 2016 and 2017).
+  An undated sentence such as a rumour can't borrow a year, and a sentence can't skip a nearer year for an older one.
 """
 import json
 import re
@@ -17,6 +21,7 @@ import pandas as pd
 from scout.text.extract import BATCH_DISCOUNT, MAX_QUOTE_CHARS, PRICES, _norm
 
 PROMPT_VERSION = "extract-v2"
+YEAR_RULE = "context-year"  # see the module docstring; was "same-sentence" for the first pilot
 EVENT_TYPES = ["injury", "contract_extension", "contract_expiry", "loan", "transfer"]
 MAX_TOKENS = 3000
 
@@ -104,9 +109,43 @@ def parse_date(s: str) -> tuple[pd.Timestamp, str] | None:
     return None
 
 
-def verify_events(text: str, output: dict, window_start: pd.Timestamp, window_end: pd.Timestamp) -> tuple[list[dict], dict]:
-    """Keep events with a verbatim quote, a day/month-precision date inside [window_start, window_end), and the
-    event's year written in the quote's own sentence. Returns (kept rows with offsets, drop counts by reason)."""
+_MONTHS = "january|february|march|april|may|june|july|august|september|october|november|december"
+_ANCHOR = re.compile(rf"\b(?:{_MONTHS}|(?:same|next|following) (?:day|week|month)|(?:days|weeks|months|a week|a month) later"
+                     r"|(?:later|earlier) that (?:day|week|month)|that (?:day|week|month)|afterwards|shortly after)\b", re.I)
+_YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
+
+
+def season_years(line: str) -> set[str]:
+    """Years named by the seasons in a line: '2016–17' names 2016 and 2017. Plain years don't count: a short
+    one-sentence paragraph ("He joined Y in 2017.") looks just like a stripped heading."""
+    return {str(int(y) + k) for y in re.findall(r"\b(\d{4})[–-]\d{2}\b", line) for k in (0, 1)}
+
+
+def is_heading(line: str) -> bool:
+    """strip_wikitext turns '== Heading ==' into a short one-sentence line ending in '.'."""
+    return 0 < len(line) <= 60 and line.endswith(".") and ". " not in line and len(line.split()) <= 8
+
+
+def year_from_context(body: str | None, sentence: str, year: str) -> bool:
+    """The year isn't in the sentence: may it come from the paragraph or season heading? (rule in the docstring)"""
+    if not body or not _ANCHOR.search(sentence):
+        return False
+    at = body.find(sentence.split("\n", 1)[0])  # a quote can span two sentence lines; locate by the first
+    if at < 0:
+        return False
+    earlier = _YEAR.findall(body[body.rfind("\n\n", 0, at) + 1:at])
+    if earlier and earlier[-1] == year:
+        return True
+    above = body[:body.rfind("\n", 0, at) + 1].split("\n")  # whole lines above the sentence's own line
+    heading = next((ln.strip() for ln in reversed(above) if is_heading(ln.strip())), "")
+    return year in season_years(heading)
+
+
+def verify_events(text: str, output: dict, window_start: pd.Timestamp, window_end: pd.Timestamp,
+                  body: str | None = None) -> tuple[list[dict], dict]:
+    """Keep events with a verbatim quote, a day/month-precision date inside [window_start, window_end), and a year
+    supported by the text (`body`: the full revision the document's sentences come from; without it only the
+    sentence counts). Returns (kept rows with offsets, drop counts by reason)."""
     kept, dropped = [], {"no_quote": 0, "bad_date": 0, "year_only": 0, "outside_window": 0, "date_not_in_text": 0, "bad_type": 0}
     for e in output.get("events", []):
         if e.get("type") not in EVENT_TYPES:
@@ -130,7 +169,7 @@ def verify_events(text: str, output: dict, window_start: pd.Timestamp, window_en
         line_start = text.rfind("\n", 0, span[0]) + 1
         line_end = text.find("\n", span[1])
         context = text[line_start:line_end if line_end >= 0 else len(text)]
-        if str(when.year) not in context:
+        if str(when.year) not in context and not year_from_context(body, context, str(when.year)):
             dropped["date_not_in_text"] += 1
             continue
         kept.append({"signal_type": e["type"], "event_date": when.date(), "precision": prec,

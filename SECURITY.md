@@ -79,7 +79,7 @@ Please don't open a public issue. Use GitHub's private vulnerability reporting o
 - **CodeQL (M2):** first scan found 10 alerts (3 medium supply-chain: Actions pinned by tag; 7 code quality). All fixed; 0 open.
 - **Wikipedia (M3a):**
   - `tests/test_wikipedia.py`: markup is stripped and the User-Agent carries contact info.
-  - `tests/test_extract_wiki.py`: events are dropped if the quote isn't verbatim, the date is year-only, outside the window, or not written in the quote's sentence; rumours are not a type.
+  - `tests/test_extract_wiki.py`: events are dropped if the quote isn't verbatim, the date is year-only or outside the window, or its year isn't supported (rule `context-year`: in the quote's sentence, or the sentence is itself dated and the year is the nearest earlier one in its paragraph or its season heading); an undated rumour can't borrow a nearby year and a sentence can't skip a nearer year; rumours are not a type.
   - `tests/test_wiki_run.py`: end-to-end with a fake Batch client.
 - **Text pipeline (M3):**
   - `tests/test_labeling_extract.py`: the extraction runner verifies quotes and caches by prompt version.
