@@ -20,7 +20,7 @@ DEMO_AS_OF = pd.Timestamp("2026-06-12")
 
 
 def build(raw: dict, run: dict) -> pd.DataFrame:
-    s = build_snapshots(raw, years=[DEMO_AS_OF.year], with_target=False, at=DEMO_AS_OF)
+    s = build_snapshots(raw, years=[DEMO_AS_OF.year], with_target=False, as_of=DEMO_AS_OF)
     X = build_features(s, raw)
     out = explain(X, run["model"], top=5, interval=run["interval"])
     clubs = pd.read_csv(RAW / "clubs.csv", usecols=["club_id", "name"]).set_index("club_id").name
