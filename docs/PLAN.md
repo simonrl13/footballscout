@@ -226,7 +226,10 @@ Effort: S = up to 3 h, M = 3–8 h, L = more than 8 h.
   - [ ] Wikidata P2446 → enwiki mapping table (99.9% coverage measured)
   - [ ] Revision fetcher: revision in force at t and t − 365, markup stripped, new text per year. Serial requests, User-Agent, `maxlag`. About 12–20 h in the background. **Needs your OK.**
   - [ ] Prompt v2: adds an event date (only events in (t − 365, t] count), keeps verbatim quotes. Pilot on 100 documents (< $1). **Needs your OK.**
-  - [ ] Full extraction run: estimate about $24 (range $15–45), refined after the pilot. **Needs your OK.**
+  - [x] Year rule `context-year` (approved 2026-10-09, with a date-anchor requirement so undated sentences can't borrow years); re-verified on the first pilot: 28 → 34 kept
+  - [x] Moves vs Transfermarkt transfers: precision (extracted transfer/loan matches a recorded move within 31 days) and recall (recorded senior moves in the window that were extracted), scored on players the table covers; in every pilot report
+  - [ ] Second pilot (~100 fresh documents, about $0.10) once the fetch covers a broad, random spread of players and years: injury and contract yields reported separately, move precision/recall. `--report m3a_pilot2.md`
+  - [ ] Full extraction run: about $26 after the first pilot. **Needs your OK, after the second pilot and a credit top-up.**
   - [ ] Features + leakage tests; 100-signal precision labels (your ~1.5 h); ablation on validation
 - **M3b GDELT (stretch):**
   - [ ] GCP/BigQuery account (**needs your OK**), dry run

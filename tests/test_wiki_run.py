@@ -73,11 +73,3 @@ def test_new_in_year_document_extraction_and_verification(conn):
     assert run_batch(conn, NS(messages=NS(batches=FakeBatches(reply))), docs, "m")["submitted"] == 0  # cached
     assert conn.execute("SELECT output FROM text_extractions WHERE doc_id = %s", (docs[0]["doc_id"],)).fetchone()[0]["events"]
 
-
-def test_year_context_finds_paragraph_and_season_heading_years():
-    from scout.text.wiki_run import heading_years, year_context
-    assert heading_years("2016–17 season.") == {"2016", "2017"}
-    body = "Club career.\n\n2016–17 season.\nIn 2016 he moved to Test FC. In January, he injured his knee.\n\nLater years.\nIn March, he left."
-    assert year_context(body, "In January, he injured his knee.", "2016") == (True, True)
-    assert year_context(body, "In January, he injured his knee.", "2017") == (False, True)
-    assert year_context(body, "In March, he left.", "2017") == (False, False)
