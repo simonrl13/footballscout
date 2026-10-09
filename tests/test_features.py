@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from scout.data.manifest import RAW
 from scout.data.snapshots import build_snapshots
 from scout.ml.features import FEATURES, build_features
 
@@ -111,3 +112,31 @@ def test_target_dropped_without_a_new_valuation():
     s = build_snapshots(base_raw(), years=[Y])
     assert s.iloc[0].value_next == 2_000_000  # the as-of value exists, but it's the same old valuation
     assert np.isnan(s.iloc[0].target)
+
+
+def test_demo_as_of_date_ignores_data_after_it():
+    """Demo snapshots (e.g. 12 June) use the same point-in-time rules with t = `at`."""
+    at = d(f"{Y}-06-12")
+    r = with_future(base_raw())
+    r["valuations"].loc[len(r["valuations"])] = (1, d(f"{Y}-06-13"), 9_000_000, 20)
+    r["transfers"].loc[len(r["transfers"])] = (1, d(f"{Y}-07-01"), 10, 20)
+    s0 = build_snapshots(base_raw(), years=[Y], with_target=False, as_of=at)
+    s1 = build_snapshots(r, years=[Y], with_target=False, as_of=at)
+    assert (s0.date == at).all() and s0.value_now.tolist() == [2_000_000]
+    pd.testing.assert_frame_equal(build_features(s0, base_raw())[FEATURES], build_features(s1, r)[FEATURES])
+
+
+def test_several_years_in_one_call():
+    """Regression (2026-10-09): a loop variable shadowed the `as_of` parameter, so the second year crashed."""
+    s = build_snapshots(base_raw(), years=[Y - 1, Y], with_target=False)
+    assert s.date.eq(T).sum() == 1
+
+
+@pytest.mark.skipif(not (RAW / "appearances.csv").exists(), reason="raw Kaggle CSVs not present")
+def test_snapshot_pairs_for_the_fetch_years():
+    """The Wikipedia fetch's own call: every labelled snapshot year at once, on the real data."""
+    from scout.data.snapshots import YEARS
+    from scout.text.wikipedia import snapshot_pairs
+    pairs = snapshot_pairs(YEARS)
+    assert set(pairs.as_of.dt.year) == set(range(YEARS[0] - 1, YEARS[-1] + 1))
+    assert (pairs.as_of.dt.strftime("%m-%d") == "09-01").all() and not pairs.duplicated().any()
