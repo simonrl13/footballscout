@@ -29,6 +29,8 @@ uv run python -m scout.agent.setup                       # once per existing vol
 uv run --env-file .env python -m scout.agent.demo        # demo predictions as of 2026-06-12 → demo_players
 uv run --env-file .env python -m scout.agent.agent "..."  # agent in the terminal (AGENT_CACHE=true reuses cached responses)
 uv run --env-file .env uvicorn scout.api.main:app --host 127.0.0.1   # tools API + POST /ask (Bearer SCOUT_API_TOKEN)
+uv run --env-file .env python -m scout.mcp_server       # MCP server (stdio), same 4 read-only tools
+uv run --env-file .env python -m scout.evals.run [--ci] --max-usd 0.50   # golden evals (cached; re-record CI replay after prompt/tool changes)
 ```
 Use `127.0.0.1`, not `localhost`, in DB URLs (Postgres is published on IPv4 only; `localhost` tries IPv6 first and hangs).
 Key modules: `scout/data/snapshots.py` (population, club at t, target), `scout/ml/features.py`, `scout/ml/train.py`, `scout/ml/tune.py`, `scout/ml/intervals.py`, `scout/ml/evaluate_test.py`, `scout/ml/model.py` (`explain()` with 80% interval), `scout/text/` (source-agnostic linker, extract, features, labeling, store; sources per docs/SPEC.md), `scout/agent/` (`tools.py` the 4 read-only tools, `agent.py` loop + spend cap + traces, `numbers.py` number check, `demo.py`), `scout/api/main.py`. v0 lives at commit `aa607c0` and `reports/v0/`.
