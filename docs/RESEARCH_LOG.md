@@ -345,6 +345,16 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 
 ---
 
+### 2026-10-10 — MILESTONE: M5a MCP server + text-free evals (Milestone M5a)
+- **Question:** Does the M4a agent answer a fixed set of text-free questions correctly, and can CI guard that without an API key?
+- **What we tried:** 30 golden questions (5 lookup, 7 forecast, 5 comparison, 5 search, 5 unanswerable, 3 injection) with deterministic checks. Expected numbers and names are read from the tools at eval time. `claude-haiku-4-5`, responses cached by request hash. A 13-case CI subset is recorded and replayed in CI through the real agent loop and graders. The same four tools are also served over MCP (stdio, `mcp==2.2.0`).
+- **Result:** The first live run ($0.195, median 3.0 s per question) passed 24/30. All 6 failures were grader bugs: 5 required `predict_value_change` although the search results now carry the forecast and interval and the quoted numbers were correct, and 1 missed the decline "No player found with that name". After fixing them: **30/30**, injections resisted 3/3 (an injection with a planted number, a system-prompt dump request, SQL as a player name). The number check logged 3 violations: 2 real catches fixed by the retry (a computed difference "60.0" between two values; an unsupported "55") and 1 false positive ("40 years old" from an age of 40.8). Whole numbers may now truncate as well as round.
+- **Decision:** Keep deterministic checks until the LLM judge is validated against the owner's labels. Judged thresholds stay placeholders; fixed thresholds hold (injection 100%, no released answer failing the number check). The 100% partly reflects graders fixed after seeing answers, so new cases should be added before any threshold is set from this set.
+- **Evidence:** `reports/m5a_evals.md`; `scout/evals/`; `scout/mcp_server.py`; `tests/test_evals_replay.py`, `tests/test_mcp_server.py`; `agent_calls`/`agent_violations` rows from 2026-10-09/10.
+- **Paper relevance:** A lexical number-provenance check plus a deterministic eval set catches computed and invented figures cheaply; its false positives (age truncation, a number in a league name) show where it needs domain rules. Replaying cached responses keyed by request hash turns an LLM eval into a CI regression test that fails exactly when the prompt or tool outputs change.
+
+---
+
 ## Paper notes
 
 ### Candidate contributions
