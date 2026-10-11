@@ -61,7 +61,7 @@ Please don't open a public issue. Use GitHub's private vulnerability reporting o
 
 ## Public-text source rules
 - No Guardian content: the integration was removed on 2026-10-01 (its terms prohibit AI-related use). A database check confirmed that nothing from it was ever stored.
-- **Wikipedia fetching:** Action API only, serial requests (< 5/s), `maxlag=5`, a 5 s wait after any response slower than 1 s, User-Agent `ScoutResearchBot/0.1 (https://github.com/simonrl13/footballscout; …)`; Wikidata SPARQL via POST in chunks of 500 IDs.
+- **Wikipedia fetching:** Action API only, serial requests (< 5/s), `maxlag=5`, a 5 s wait after any response slower than 1 s, transient failures (DNS, timeouts, resets, HTTP 429/5xx, `maxlag`) retried serially with exponential backoff (5 s doubling, at most 2 min per wait, `Retry-After` honoured) for at most 10 minutes, other 4xx never retried, User-Agent `ScoutResearchBot/0.1 (https://github.com/simonrl13/footballscout; …)`; Wikidata SPARQL via POST in chunks of 500 IDs.
 - **Wikipedia (CC BY-SA 4.0):**
   - Every excerpt shown links to the exact revision and carries the license notice and a page-history link.
   - Excerpts are short (≤ 300 characters, or a ≤ 2-sentence summary).
@@ -80,6 +80,7 @@ Please don't open a public issue. Use GitHub's private vulnerability reporting o
 - **CodeQL (M2):** first scan found 10 alerts (3 medium supply-chain: Actions pinned by tag; 7 code quality). All fixed; 0 open.
 - **Wikipedia (M3a):**
   - `tests/test_wikipedia.py`: markup is stripped and the User-Agent carries contact info.
+  - `tests/test_wikipedia_retry.py` (fake connection and clock): DNS failures, timeouts, resets, 503 and `maxlag` are retried with backoff and then succeed; `Retry-After` is honoured; 400/403/404 are not retried; persistent failure stops within 10 minutes with a resume message.
   - `tests/test_extract_wiki.py`: events are dropped if the quote isn't verbatim, the date is year-only or outside the window, or its year isn't supported (rule `context-year`: in the quote's sentence, or the sentence is itself dated and the year is the nearest earlier one in its paragraph or its season heading); an undated rumour can't borrow a nearby year and a sentence can't skip a nearer year; rumours are not a type.
   - `tests/test_wiki_run.py`: end-to-end with a fake Batch client.
 - **Text pipeline (M3):**
