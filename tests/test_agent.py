@@ -36,7 +36,7 @@ class FakeTracer:
         self.spent, self.calls, self.violations, self.cache = spent, [], [], {}
 
     def spent_today(self):
-        return self.spent + sum(c[4] for c in self.calls)
+        return self.spent + sum(c[3] for c in self.calls)  # (step, model, usage, cost, ...)
 
     def call(self, *args):
         self.calls.append(args[1:])
@@ -195,3 +195,11 @@ def test_answers_without_wikipedia_get_no_footer():
     client = FakeClient(text("I only cover 7 leagues."))
     events, _ = run(client, question="Weather?")
     assert "Sources" not in events[-1]["text"] and events[-1]["citations"] == 0
+
+
+def test_every_request_asks_for_prompt_caching_and_cache_tokens_are_priced():
+    client = FakeClient(text("I only cover 7 leagues."))
+    run(client, question="Weather?")
+    assert client.requests[0]["cache_control"] == {"type": "ephemeral"}
+    usage = {"input_tokens": 100, "output_tokens": 10, "cache_read_input_tokens": 4000, "cache_creation_input_tokens": 0}
+    assert agent.cost_usd("claude-haiku-4-5", usage) == pytest.approx((100 * 1 + 10 * 5 + 4000 * 0.1) / 1e6)

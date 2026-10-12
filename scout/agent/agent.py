@@ -1,4 +1,4 @@
-"""Scout agent: a Claude tool-calling loop over the four read-only tools, with guardrails.
+"""Scout agent: a Claude tool-calling loop over the five read-only tools, with guardrails.
 
 - Model from AGENT_MODEL (env). Max MAX_STEPS model calls and MAX_TOKENS output per call.
 - Spend cap: DAILY_CAP_USD across all agent calls per UTC day, checked before every model call.
@@ -6,7 +6,11 @@
   fixed facts in SYSTEM (data date, horizon, interval level, league names such as "Ligue 1"). One
   retry with feedback; if it still fails, the answer is blocked. Both cases are logged in agent_violations.
 - Every model call is a row in agent_calls (tokens, cost, latency, tools requested).
+- Citation check: [wiki n] refs must come from this turn's search_text results and quotes stay <= 300 characters
+  (same retry/block path); the sources footer (exact revision, page history, CC BY-SA notice) is built in code.
 - AGENT_CACHE=true (development/evals): identical requests are served from agent_cache without an API call.
+- Prompt caching: top-level automatic caching on every request (tools + system + earlier turns). Below the model's
+  minimum cacheable prefix (4,096 tokens on claude-haiku-4-5; ~2,300 here) nothing is written and nothing is charged.
 
 The answer is released only after the number check, so the stream carries progress events (tool calls) and then the
 checked answer, not raw tokens.
@@ -142,6 +146,7 @@ def run(question: str, client, tracer, db, model: str | None = None, use_cache: 
             return
         req = {"model": model, "max_tokens": MAX_TOKENS, "system": SYSTEM, "tools": tools.tool_specs(), "messages": messages}
         key = hashlib.sha256(json.dumps(req, sort_keys=True).encode()).hexdigest()
+        req["cache_control"] = {"type": "ephemeral"}  # after the key: caching doesn't change the answer
         t0 = time.perf_counter()
         resp = tracer.cache_get(key) if use_cache else None
         cached = resp is not None
