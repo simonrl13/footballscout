@@ -207,7 +207,8 @@ def main() -> None:
                          "new_cost_usd": round(cost_of(res["new"], model), 4), "answer": res["events"][-1].get("text", "")})
             print(rows[-1]["case"], "PASS" if rows[-1]["pass"] else f"FAIL ({rows[-1]['failed']})", flush=True)
             if case.get("ci") and args.set == "dev":
-                recording.append({"case": case, "expected": expected, "model": model, "responses": res["responses"],
+                recording.append({"case": case, "expected": expected, "model": model, "effort": os.environ.get("AGENT_EFFORT"),
+                                  "responses": res["responses"],
                                   "tool_outputs": res["tool_outputs"], "checks": checks})
     if recording:
         RECORDING.parent.mkdir(exist_ok=True)

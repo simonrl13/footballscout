@@ -43,6 +43,10 @@ class ReplayTracer:
 def test_recorded_case_replays_with_the_same_grades(rec, monkeypatch):
     outputs = {(o["name"], json.dumps(o["input"], sort_keys=True)): o["output"] for o in rec["tool_outputs"]}
     monkeypatch.setattr(tools, "run_tool", lambda db, name, args: outputs[(name, json.dumps(args, sort_keys=True))])
+    if rec.get("effort"):
+        monkeypatch.setenv("AGENT_EFFORT", rec["effort"])
+    else:
+        monkeypatch.delenv("AGENT_EFFORT", raising=False)
     events = list(agent.run(rec["case"]["question"], StaleClient(), ReplayTracer(rec["responses"]), db=None,
                             model=rec["model"], use_cache=True))
     assert grade(rec["case"], rec["expected"], events) == rec["checks"]
