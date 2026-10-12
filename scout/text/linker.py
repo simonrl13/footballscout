@@ -21,10 +21,14 @@ CLUB_AFFIXES = {"fc", "afc", "cf", "sc", "ac", "as", "ssc", "us", "sv", "vfb", "
 _WORD = re.compile(r"[a-z0-9]+(?:['\-][a-z0-9]+)*")
 
 
+# letters Unicode doesn't decompose into a base letter + accent ("Ødegaard" must match "odegaard")
+_LETTERS = str.maketrans("øØđĐłŁıðÐ", "ooddllidd")
+
+
 def fold(text: str) -> str:
     """Lowercase, strip accents, keep length (offsets in the folded text equal offsets in the original)."""
     out = []
-    for ch in text:
+    for ch in text.translate(_LETTERS):
         base = unicodedata.normalize("NFKD", ch)[0].lower()
         out.append(base if len(base) == 1 else ch)
     return "".join(out)

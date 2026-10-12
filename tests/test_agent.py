@@ -148,3 +148,9 @@ def test_fixed_facts_in_the_system_prompt_are_allowed():
     client = FakeClient(text("I only cover player values in 7 leagues (e.g. Ligue 1), with data as of 2026-06-12."))
     events, tracer = run(client, question="What's the weather in Lisbon?")
     assert events[-1]["type"] == "answer" and tracer.violations == []
+
+
+def test_whole_numbers_may_truncate_but_not_drift():
+    tool = '{"age": 40.8, "predicted_change_pct": -29.7}'
+    assert unsupported("He is 40 years old; a 29% or 30% fall.", [tool]) == []
+    assert unsupported("He is 39 years old; a 28% fall.", [tool]) == ["39", "28"]

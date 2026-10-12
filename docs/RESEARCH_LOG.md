@@ -345,6 +345,26 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 
 ---
 
+### 2026-10-10 — MILESTONE: M5a MCP server + text-free evals (Milestone M5a)
+- **Question:** Does the M4a agent answer a fixed set of text-free questions correctly, and can CI guard that without an API key?
+- **What we tried:** 30 golden questions (5 lookup, 7 forecast, 5 comparison, 5 search, 5 unanswerable, 3 injection) with deterministic checks. Expected numbers and names are read from the tools at eval time. `claude-haiku-4-5`, responses cached by request hash. A 13-case CI subset is recorded and replayed in CI through the real agent loop and graders. The same four tools are also served over MCP (stdio, `mcp==2.2.0`).
+- **Result:** The first live run ($0.195, median 3.0 s per question) passed 24/30. All 6 failures were grader bugs: 5 required `predict_value_change` although the search results now carry the forecast and interval and the quoted numbers were correct, and 1 missed the decline "No player found with that name". After fixing them: **30/30**, injections resisted 3/3 (an injection with a planted number, a system-prompt dump request, SQL as a player name). The number check logged 3 violations: 2 real catches fixed by the retry (a computed difference "60.0" between two values; an unsupported "55") and 1 false positive ("40 years old" from an age of 40.8). Whole numbers may now truncate as well as round.
+- **Decision:** Keep deterministic checks until the LLM judge is validated against the owner's labels. Judged thresholds stay placeholders; fixed thresholds hold (injection 100%, no released answer failing the number check). The 100% partly reflects graders fixed after seeing answers, so new cases should be added before any threshold is set from this set.
+- **Evidence:** `reports/m5a_evals.md`; `scout/evals/`; `scout/mcp_server.py`; `tests/test_evals_replay.py`, `tests/test_mcp_server.py`; `agent_calls`/`agent_violations` rows from 2026-10-09/10.
+- **Paper relevance:** A lexical number-provenance check plus a deterministic eval set catches computed and invented figures cheaply; its false positives (age truncation, a number in a league name) show where it needs domain rules. Replaying cached responses keyed by request hash turns an LLM eval into a CI regression test that fails exactly when the prompt or tool outputs change.
+
+---
+
+### 2026-10-12 — DECISION: dev and held-out eval sets (Milestone M5a review)
+- **Question:** The M5a graders were fixed after seeing the first run's answers (24/30 → 30/30). Can that 100% be used to set thresholds?
+- **Decision:** No. The 30 M5a questions become the **dev set** (`scout/evals/dev.jsonl`), for development only. Thresholds will be set on a **held-out set** (`scout/evals/heldout.jsonl`) of at least 20 questions written before they are run: 10 by Claude (committed 2026-10-12, not run) and 10 by the owner (`docs/evals/my_questions.md`). The runner refuses a held-out run with fewer than 20 cases, without `--confirm-heldout --reason`, or on a dirty tree, and appends every run to `docs/evals/HELDOUT_LOG.md`. A grader problem found on held-out answers is fixed for the dev set and the next held-out questions, never by re-grading the same run.
+- **Grader fixes being set aside (from the first M5a run):** (1) forecast and comparison cases required `predict_value_change`/`compare_players`, but `search_players` also returns the forecast and interval and the quoted numbers were right (5 cases) → any forecast-bearing tool is accepted; (2) the decline phrases missed "No player found with that name" (1 case) → phrase added; (3) the number check flagged "40 years old" from an age of 40.8 → whole numbers may truncate.
+- **Also found while writing the held-out questions (not by running them):** searching "odegaard" found nothing, because Unicode doesn't decompose "ø" into "o" + accent. Accent folding now maps ø, đ, ł, ı and ð one-to-one (offsets unchanged); 23 demo players' search names changed. The held-out question about Martin Ødegaard was kept.
+- **Evidence:** `scout/evals/run.py` (`heldout_gate`), `tests/test_evals_replay.py::test_heldout_set_is_gated`, `scout/text/linker.py::fold`, `tests/test_linker.py`.
+- **Paper relevance:** Deterministic graders tuned on observed answers overstate quality, like tuning on a test set. Keeping a held-out question set with a logged, gated run gives eval thresholds the same discipline as the model's test set.
+
+---
+
 ## Paper notes
 
 ### Candidate contributions
