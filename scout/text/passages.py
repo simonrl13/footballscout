@@ -7,7 +7,7 @@ Usage: uv run --env-file .env python -m scout.text.passages     (loader role; re
 import re
 
 from scout.text import store
-from scout.text.extract_wiki import is_heading
+from scout.text.extract_wiki import SENT, is_heading
 
 DDL = """
 CREATE TABLE IF NOT EXISTS text_passages (
@@ -23,7 +23,6 @@ CREATE INDEX IF NOT EXISTS text_passages_tsv ON text_passages USING gin (tsv);
 CREATE INDEX IF NOT EXISTS text_passages_player ON text_passages (player_id);
 """
 MAX_CHARS = 1200
-_SENT = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(])")
 
 
 def split(body: str) -> list[tuple[str | None, str]]:
@@ -39,7 +38,7 @@ def split(body: str) -> list[tuple[str | None, str]]:
         if len(text) < 40:  # headings and stubs alone are not passages
             continue
         piece = ""
-        for s in _SENT.split(text):
+        for s in SENT.split(text):
             if piece and len(piece) + len(s) + 1 > MAX_CHARS:
                 out.append((section, piece))
                 piece = ""
