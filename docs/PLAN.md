@@ -251,6 +251,8 @@ Effort: S = up to 3 h, M = 3–8 h, L = more than 8 h.
 - [ ] LLM judge → agreement + κ against your labels; **cost estimate → approval → full run**; thresholds set just below the measured scores
 - [x] CI eval subset (13 questions, M5a): replayed from a recording instead of a fixture DB (no API key in CI); full suite manual (`python -m scout.evals.run`)
 - [x] Text-free golden set (30 questions, M5a); grows to 60 with the Wikipedia cases
+- [x] Dev/held-out split (2026-10-12): the 30 M5a questions are the dev set; thresholds only on a held-out set of >= 20 questions written before running (Claude's 10 committed)
+- [ ] Owner's 10 held-out questions (`docs/evals/my_questions.md`), then the first gated held-out run
 - [x] MCP server (stdio), read-only, the 4 text-free tools (M5a); `search_text` joins with the Wikipedia work; MCP Inspector command in the README
 - [ ] Test that `scout_reader` can't write or run DDL; injection attempts logged
 

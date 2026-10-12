@@ -33,6 +33,8 @@ def articles(text=TEXT, tags=WATFORD_TAG, when="2019-08-10"):
 def test_fold_keeps_offsets():
     s = "Ödegaard and Müller"
     assert len(fold(s)) == len(s) and fold(s) == "odegaard and muller"
+    s = "Martin Ødegaard, Luka Đurić, Łukasz"  # letters with no Unicode decomposition
+    assert len(fold(s)) == len(s) and fold(s) == "martin odegaard, luka duric, lukasz"
 
 
 def test_spans_prefer_longest_full_name_and_require_capitalized_mononyms():
