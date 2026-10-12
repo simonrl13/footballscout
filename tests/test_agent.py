@@ -136,7 +136,7 @@ def test_number_check():
 
 def test_tool_specs_come_from_the_pydantic_models():
     specs = {s["name"]: s for s in tools.tool_specs()}
-    assert set(specs) == {"get_player", "predict_value_change", "search_players", "compare_players"}
+    assert set(specs) == {"get_player", "predict_value_change", "search_players", "compare_players", "search_text"}
     assert specs["search_players"]["input_schema"]["properties"]["limit"]["maximum"] == 20
     assert specs["search_players"]["input_schema"]["additionalProperties"] is False
 
@@ -154,3 +154,44 @@ def test_whole_numbers_may_truncate_but_not_drift():
     tool = '{"age": 40.8, "predicted_change_pct": -29.7}'
     assert unsupported("He is 40 years old; a 29% or 30% fall.", [tool]) == []
     assert unsupported("He is 39 years old; a 28% fall.", [tool]) == ["39", "28"]
+
+
+PASSAGE = {"player_id": 132098, "player": "Harry Kane", "section": "Bayern Munich", "text": "In 2025 Kane won the league.",
+           "revision_date": "2026-06-01", "revision_url": "https://en.wikipedia.org/w/index.php?oldid=111",
+           "page_history": "https://en.wikipedia.org/w/index.php?title=Harry+Kane&action=history", "license": "CC BY-SA 4.0"}
+
+
+@pytest.fixture
+def wiki(monkeypatch):
+    def fake(db, name, args):
+        tools.TextSearch.model_validate(args)
+        return {"count": 2, "passages": [dict(PASSAGE), dict(PASSAGE, revision_url="https://en.wikipedia.org/w/index.php?oldid=222")]}
+    monkeypatch.setattr(tools, "run_tool", fake)
+
+
+def test_cited_passages_get_an_exact_revision_footer_with_the_license(wiki):
+    client = FakeClient(tool_use("search_text", {"query": "league title", "player_id": 132098}),
+                        text("Kane won the league in 2025 [wiki 2]."))
+    events, _ = run(client)
+    out = events[-1]
+    assert out["type"] == "answer" and out["citations"] == 1
+    assert "[wiki 2] Harry Kane's Wikipedia page, revision of 2026-06-01: https://en.wikipedia.org/w/index.php?oldid=222" in out["text"]
+    assert "oldid=111" not in out["text"] and "CC BY-SA 4.0" in out["text"] and "action=history" in out["text"]
+    result = client.requests[1]["messages"][-1]["content"][0]["content"]
+    assert '"ref": "wiki 1"' in result and '"ref": "wiki 2"' in result
+
+
+def test_invented_refs_and_long_quotes_are_retried_then_blocked(wiki):
+    long_quote = '"' + "x" * 301 + '"'
+    client = FakeClient(tool_use("search_text", {"query": "league"}), text("Kane won the league [wiki 3]."),
+                        text(f"Kane: {long_quote} [wiki 1]."))
+    events, tracer = run(client)
+    assert events[-1]["type"] == "blocked"
+    assert [(v[0], v[2]) for v in tracer.violations] == [("citation_check", "retried"), ("citation_check", "blocked")]
+    assert "[wiki 3] does not exist" in client.requests[2]["messages"][-1]["content"]
+
+
+def test_answers_without_wikipedia_get_no_footer():
+    client = FakeClient(text("I only cover 7 leagues."))
+    events, _ = run(client, question="Weather?")
+    assert "Sources" not in events[-1]["text"] and events[-1]["citations"] == 0
