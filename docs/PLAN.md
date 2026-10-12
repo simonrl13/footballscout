@@ -257,9 +257,9 @@ Effort: S = up to 3 h, M = 3–8 h, L = more than 8 h.
 - [ ] Test that `scout_reader` can't write or run DDL; injection attempts logged
 
 ### M6: operations and presentation (Nov 9–15)
-- [ ] Tracing to Postgres (model, tokens in/out/cached, latency, cost, tools, violations)
-- [ ] Dashboard: cost per query, p95 latency, cache hit rate
-- [ ] Prompt caching on tools + system prompt (verify cache reads)
+- [x] Tracing to Postgres (model, tokens in/out/cached, latency, cost, tools, violations) — since M4a
+- [x] Dashboard: cost per query, p95 latency, cache hit rate (views `agent_daily`, `agent_conversations`; `python -m scout.agent.dashboard`)
+- [x] Prompt caching on tools + system prompt: top-level automatic caching on every request. Verified cost model; on `claude-haiku-4-5` the prefix (~2,300 tokens) is under the 4,096-token minimum, so reads appear only on long multi-step turns (see the dashboard)
 - [ ] Rate limits on public endpoints
 - [ ] README: architecture diagram, results table (baselines, news ablation, evals, coverage, security), "what didn't work" (v0 first), data caveats
 - [ ] SECURITY.md complete with OWASP mapping and test evidence

@@ -29,12 +29,15 @@ uv run python -m scout.agent.setup                       # once per existing vol
 uv run --env-file .env python -m scout.agent.demo        # demo predictions as of 2026-06-12 → demo_players
 uv run --env-file .env python -m scout.agent.agent "..."  # agent in the terminal (AGENT_CACHE=true reuses cached responses)
 uv run --env-file .env uvicorn scout.api.main:app --host 127.0.0.1   # tools API + POST /ask (Bearer SCOUT_API_TOKEN)
-uv run --env-file .env python -m scout.mcp_server       # MCP server (stdio), same 4 read-only tools
+uv run --env-file .env python -m scout.mcp_server       # MCP server (stdio), same 5 read-only tools
+uv run --env-file .env python -m scout.text.wikipedia --demo   # demo players' pages as of the demo date (resumable)
+uv run --env-file .env python -m scout.text.passages    # rebuild Wikipedia passages for search_text (Postgres FTS)
+uv run --env-file .env python -m scout.agent.dashboard [--install]   # tracing dashboard (views in db/agent.sql)
 uv run --env-file .env python -m scout.evals.run [--ci] --max-usd 0.50   # dev-set evals (cached; re-record CI replay after prompt/tool changes)
 uv run --env-file .env python -m scout.evals.run --set heldout --confirm-heldout --reason "..."   # held-out: thresholds only, >= 20 cases, logged
 ```
 Use `127.0.0.1`, not `localhost`, in DB URLs (Postgres is published on IPv4 only; `localhost` tries IPv6 first and hangs).
-Key modules: `scout/data/snapshots.py` (population, club at t, target), `scout/ml/features.py`, `scout/ml/train.py`, `scout/ml/tune.py`, `scout/ml/intervals.py`, `scout/ml/evaluate_test.py`, `scout/ml/model.py` (`explain()` with 80% interval), `scout/text/` (source-agnostic linker, extract, features, labeling, store; sources per docs/SPEC.md), `scout/agent/` (`tools.py` the 4 read-only tools, `agent.py` loop + spend cap + traces, `numbers.py` number check, `demo.py`), `scout/api/main.py`. v0 lives at commit `aa607c0` and `reports/v0/`.
+Key modules: `scout/data/snapshots.py` (population, club at t, target), `scout/ml/features.py`, `scout/ml/train.py`, `scout/ml/tune.py`, `scout/ml/intervals.py`, `scout/ml/evaluate_test.py`, `scout/ml/model.py` (`explain()` with 80% interval), `scout/text/` (source-agnostic linker, extract, features, labeling, store; sources per docs/SPEC.md), `scout/agent/` (`tools.py` the 5 read-only tools incl. `search_text`, `agent.py` loop + spend cap + traces + citations, `numbers.py` number check, `demo.py`, `dashboard.py`), `scout/text/passages.py`, `scout/evals/`, `scout/api/main.py`. v0 lives at commit `aa607c0` and `reports/v0/`.
 
 ## ML rules
 - **No feature may use data dated after its snapshot date.** Every feature gets a test that appends future data and asserts the features at t don't change. A text document counts only if `available_at < t` (Wikipedia: the revision in force at t; GDELT: record `DATE < t`).
