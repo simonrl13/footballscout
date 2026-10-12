@@ -415,6 +415,34 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 
 ---
 
+### 2026-10-12 — FINDING: injuries are sparse in Wikipedia; moves are precise (Milestone M3a)
+- **Question:** Across both extraction pilots, which events does point-in-time Wikipedia text yield often enough to be features, and how accurate are they?
+- **Injury sparsity (finding):** verified injury events per player-year: first pilot 4 per 67 labelled player-years (0.06; re-verified with `context-year`; Haiku 4.5; sample biased toward veterans and 2012–2015), second pilot 2 per 100 (0.02; Haiku 5.5; random across 2013–2024). Wikipedia rarely gives an injury a date precise enough (day or month) for a 12-month window, and many injury mentions are year-only or undated. Injuries are therefore reported but **not used as a feature**.
+- **Extraction quality (moves vs Transfermarkt, second pilot):** precision 19/19 extracted transfers/loans match a recorded move within 31 days (95% CI 83–100%); recall 21/32 recorded senior moves in the windows (66%, 95% CI 48–80%), bounded because each document holds only text added during the year. This is the pipeline's quality check: it is measurable only for players with a recorded transfer history (the table covers 20% of 2013 player-years, 100% of 2024).
+- **Evidence:** `reports/m3a_pilot.md`, `reports/m3a_pilot2.md`; `scout/text/eval_events.py`.
+- **Paper relevance:** The most valuable signal for value forecasting (injuries) is the scarcest in this public source; what Wikipedia records reliably (moves, contracts) partly duplicates structured data. A measurable precision against an independent source is what makes the extracted signals usable at all.
+
+### 2026-10-12 — PRE-REGISTRATION: Wikipedia text features (Milestone M3a, before the full extraction and any evaluation)
+- **Question:** Do contract and move features extracted from point-in-time Wikipedia text improve on B0 on validation data?
+- **Extraction (fixed before the run):** `extract-v3` on `claude-haiku-5-5` (effort `low`, Batch API), year rule `context-year`, sentence splitter that keeps numbered club names ("1. FSV Mainz 05"). One document per labelled snapshot player-year: the text new on the player's page between the revision in force at t − 1 year and the one in force at t. Events need a verbatim quote and a day/month date in [t − 1 year, t). Contract end dates (`contract_until`) need their year written in the quote itself; they are kept from any event, whatever its date (a statement in a document published before t is known at t).
+- **Feature sets (`scout/text/wiki_features.py`; every row from a document published before t, `available_at < t`):**
+  - **B0:** the current 12 features (unchanged; still the baseline after the stats pass).
+  - **C (contract):**
+    - `contract_years_left`: (latest contract end date stated − t) in years, over the contract statements in all of the player's documents published before t, not only the 12-month window. A year-only end date is read as 30 June of that year, a month-only one as the month's last day. Negative values (an end date already passed) are kept; NaN when nothing is stated.
+    - `contract_known`: 1 if any statement exists, else 0 (missing-value indicator).
+    - `contract_ext_12m`, `contract_exp_12m`: verified contract-extension / contract-expiry events dated in [t − 1 year, t).
+  - **M (moves):** `text_transfers_12m`, `text_loans_12m`: verified transfer / loan events dated in [t − 1 year, t).
+  - **Injuries:** `text_injuries_12m` is reported by year but **not used as a feature** (about 0.02 per player-year).
+  - Candidate sets: **B0**, **B0+C**, **B0+C+M**.
+- **Known limitation, fixed in advance:** documents exist only for labelled player-years, so an end date stated before a player's first labelled snapshot is not seen (the indicator marks those cases). Players without an English Wikipedia page get `contract_known` = 0 and zero counts.
+- **Protocol (identical to the stats pass):** LightGBM with the fixed tuned settings (`scout/ml/best_params.json`, no re-tuning) and ridge (alpha 100); rolling-origin CV fitting 2013..y−1 and scoring y for y = 2016–2021, then validation 2022 (fit on 2013–2021). **No test data**; the test years are never loaded. Script: `scout/ml/text_pass.py` (committed with this entry).
+- **Decision rule (fixed in advance):** a set **helps** if, for LightGBM, (i) its mean CV MAE is lower than B0's and (ii) the 95% paired-bootstrap CI of MAE(set) − MAE(B0), pooled over CV folds + 2022, lies entirely below 0. The helping set with the lowest mean CV MAE becomes the new baseline; if none helps, B0 stays. Ridge results and LightGBM − ridge differences are reported but don't decide. The test set stays sealed until the milestone's single logged run.
+- **Result:** not recorded yet (separate entry after the run).
+- **Evidence:** this entry and `scout/ml/text_pass.py`, `scout/text/wiki_features.py`, `tests/test_wiki_features.py` (leakage test) are committed before the full extraction and before the evaluation script runs (see git history).
+- **Paper relevance:** method (pre-registered feature evaluation of LLM-extracted, point-in-time text features).
+
+---
+
 ## Paper notes
 
 ### Candidate contributions
