@@ -8,6 +8,7 @@ contact, use maxlag, and back off after slow responses (Wikimedia robot policy).
 Usage: uv run --env-file .env python -m scout.text.wikipedia [--limit N]     (resumable)
 """
 import argparse
+import http.client
 import json
 import re
 import time
@@ -24,6 +25,9 @@ UA = "ScoutResearchBot/0.1 (https://github.com/simonrl13/footballscout; scouting
 API = "https://en.wikipedia.org/w/api.php"
 SPARQL = "https://query.wikidata.org/sparql"
 PAUSE = 0.25  # seconds between requests (serial, well under 5 req/s)
+RETRY_STATUS = {429, 500, 502, 503, 504}
+MAX_WAIT = 120      # longest single backoff wait, seconds
+RETRY_BUDGET = 600  # give up after ~10 minutes of transient failures (progress is saved; rerunning resumes)
 
 DDL = """
 ALTER TABLE text_documents ADD COLUMN IF NOT EXISTS body text;   -- stored for CC BY-SA sources only
@@ -42,30 +46,53 @@ CREATE TABLE IF NOT EXISTS wiki_snapshot_revisions (
 """
 
 
-def _get(url: str, params: dict, accept="application/json", post: bool = False) -> dict:
+class FetchGaveUp(RuntimeError):
+    """Transient failures lasted longer than RETRY_BUDGET."""
+
+
+def _retry_after(e: urllib.error.HTTPError) -> float:
+    try:
+        return float(e.headers.get("Retry-After") or 0)
+    except (TypeError, ValueError):  # an HTTP-date instead of seconds: fall back to our own backoff
+        return 0.0
+
+
+def _get(url: str, params: dict, accept="application/json", post: bool = False, *,
+         _open=urllib.request.urlopen, _sleep=time.sleep, _clock=time.monotonic) -> dict:
+    """One polite request. Transient failures (DNS, timeouts, resets, bad/partial bodies, HTTP 429/5xx, maxlag) are
+    retried serially with exponential backoff (honouring Retry-After) for up to RETRY_BUDGET seconds; any other HTTP
+    4xx is raised at once."""
     full = url + "?" + urllib.parse.urlencode(params)
     if post:  # long SPARQL queries go in the body (Wikidata Query Service accepts form-encoded POST)
         req = urllib.request.Request(url, data=urllib.parse.urlencode(params).encode(), headers={
             "User-Agent": UA, "Accept": accept, "Content-Type": "application/x-www-form-urlencoded"})
     else:
         req = urllib.request.Request(full, headers={"User-Agent": UA, "Accept": accept, "Accept-Encoding": "identity"})
-    for attempt in range(6):
-        t0 = time.monotonic()
+    start, attempt = _clock(), 0
+    while True:
+        t0, server_wait = _clock(), 0.0
         try:
-            with urllib.request.urlopen(req, timeout=60) as r:
+            with _open(req, timeout=60) as r:
                 data = json.load(r)
-        except urllib.error.HTTPError as e:
-            if e.code in (429, 500, 502, 503, 504):
-                time.sleep(min(60, 5 * 2 ** attempt))
-                continue
-            raise
-        took = time.monotonic() - t0
-        if data.get("error", {}).get("code") == "maxlag":  # servers busy: wait and retry
-            time.sleep(5 * (attempt + 1))
-            continue
-        time.sleep(5 if took > 1 else PAUSE)  # robot policy: slow response -> wait 5 s
-        return data
-    raise RuntimeError(f"giving up after retries: {full[:120]}")
+        except urllib.error.HTTPError as e:  # before URLError: HTTPError is a subclass
+            if e.code not in RETRY_STATUS:
+                raise
+            err, server_wait = f"HTTP {e.code}", _retry_after(e)
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException, json.JSONDecodeError) as e:
+            err = f"{type(e).__name__}: {getattr(e, 'reason', e)}"  # DNS failure, timeout, reset, truncated/non-JSON
+        else:
+            if data.get("error", {}).get("code") != "maxlag":
+                _sleep(5 if _clock() - t0 > 1 else PAUSE)  # robot policy: slow response -> wait 5 s
+                return data
+            err = "maxlag (servers busy)"
+        wait = max(server_wait, min(MAX_WAIT, 5 * 2 ** attempt))
+        elapsed = _clock() - start
+        if elapsed + wait > RETRY_BUDGET:
+            raise FetchGaveUp(f"Wikimedia request still failing after {elapsed:.0f} s and {attempt + 1} attempts "
+                              f"(last error: {err}): {full[:120]}. Progress is saved; rerun the same command to resume.")
+        print(f"  {err}; retrying in {wait:.0f} s (attempt {attempt + 2})", flush=True)
+        _sleep(wait)
+        attempt += 1
 
 
 # ---- wikitext -> plain text ---------------------------------------------------------------------------
@@ -259,4 +286,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except FetchGaveUp as e:
+        raise SystemExit(f"stopped: {e}")
