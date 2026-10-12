@@ -228,8 +228,9 @@ Effort: S = up to 3 h, M = 3–8 h, L = more than 8 h.
   - [ ] Prompt v2: adds an event date (only events in (t − 365, t] count), keeps verbatim quotes. Pilot on 100 documents (< $1). **Needs your OK.**
   - [x] Year rule `context-year` (approved 2026-10-09, with a date-anchor requirement so undated sentences can't borrow years); re-verified on the first pilot: 28 → 34 kept
   - [x] Moves vs Transfermarkt transfers: precision (extracted transfer/loan matches a recorded move within 31 days) and recall (recorded senior moves in the window that were extracted), scored on players the table covers; in every pilot report
-  - [ ] Second pilot (~100 fresh documents, about $0.10) once the fetch covers a broad, random spread of players and years: injury and contract yields reported separately, move precision/recall. `--report m3a_pilot2.md`
-  - [ ] Full extraction run: about $26 after the first pilot. **Needs your OK, after the second pilot and a credit top-up.**
+  - [x] Second pilot (2026-10-12, Haiku 5.5, $0.0111): injuries 0.02, contracts 0.11, moves 0.33 per player-year; move precision 19/19, recall 21/32 (`reports/m3a_pilot2.md`)
+  - [ ] Sentence splitter: don't cut at numbered club names ("1. FSV Mainz 05") before the full run
+  - [ ] Full extraction run: about **$2.65** on Haiku 5.5 (second pilot). **Needs your OK.**
   - [ ] Features + leakage tests; 100-signal precision labels (your ~1.5 h); ablation on validation
 - **M3b GDELT (stretch):**
   - [ ] GCP/BigQuery account (**needs your OK**), dry run

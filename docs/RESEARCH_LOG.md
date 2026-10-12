@@ -396,6 +396,25 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 
 ---
 
+### 2026-10-12 — RESULT: second extract-v2 pilot on Wikipedia, Haiku 5.5 (Milestone M3a)
+- **Question:** With the fetch complete (37,665 snapshot pairs, 8,179 players) and the year rule `context-year`, what does extraction yield on a sample spread across players and years, how accurate are its transfer/loan events, and what would the full run cost on Haiku 5.5?
+- **What we tried:** 100 new labelled player-year documents (not extracted before), sampled at random from all fetched ones; snapshot years 2013–2024 (2–15 documents per year). `claude-haiku-5-5`, effort `low`, Batch API. Moves checked against Transfermarkt's transfers table (within 31 days; players with no recorded transfer left out).
+- **Result:** 100/100 succeeded (no refusals, no truncation; largest output 874 tokens). Cost **$0.0111** (146,628 input / 15,237 output tokens; mean 1,466 / 152 per document). 179 events returned, **46 kept** (0.46 per player-year). Drops: outside the window 93, year-only date 37, year rule 2, bad date 1.
+
+  | Events kept | Count | Per player-year |
+  |---|---|---|
+  | Injury | 2 | 0.02 |
+  | Contract (extension + expiry) | 11 | 0.11 |
+  | Move (transfer + loan) | 33 | 0.33 |
+
+  Moves vs Transfermarkt: precision **19/19** (95% CI 83–100%); recall **21/32** (66%, 95% CI 48–80%; bounded by design, since a document holds only text added during the year); 14 extracted moves belonged to players with no recorded transfer and were not scored. Full-run estimate: ~23,764 non-empty documents × measured mean tokens = **$2.65** on the Batch API (vs ~$26 on Haiku 4.5).
+- **Observations:** the two year-rule drops were a real contract extension with no date in its sentence ("As part of the deal, Raya signed a two-year contact extension…") and a fragment ("FSV Mainz 05 until June.") produced by the sentence splitter cutting at the "1." of "1. FSV Mainz 05". The splitter needs an exception for numbered club names before the full run.
+- **Decision:** No full run yet: it waits for the owner's decision (the estimate is now well within budget). Injury yield is low in both pilots (2 per 100 player-years here; 4 per 67 labelled player-years in the first pilot, re-verified with the new rule), so Wikipedia is unlikely to supply a useful injury feature. Contract events (0.11 per player-year) are the most plausible new signal; moves are accurate but largely duplicate the transfers table and point-in-time club changes the model already uses.
+- **Evidence:** `reports/m3a_pilot2.md` (batch `msgbatch_01LETQtjGT69jhX76esB7sw5`); `scout/text/wiki_run.py`, `scout/text/eval_events.py`, `scout/text/extract_wiki.py`.
+- **Paper relevance:** A negative-leaning but useful result: verified, point-in-time Wikipedia events are precise (moves 19/19 against an independent source) but sparse, and the scarce category (injuries) is the one with the most potential value. Precision against Transfermarkt is measurable only where its transfer history exists, which excludes most pre-2018 player-years.
+
+---
+
 ## Paper notes
 
 ### Candidate contributions
