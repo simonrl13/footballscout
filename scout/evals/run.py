@@ -1,4 +1,9 @@
-"""Text-free agent evals (M5a): golden questions graded with deterministic checks, no LLM judge yet.
+"""Agent evals: golden questions graded with deterministic checks, no LLM judge yet.
+
+Two sets (decided 2026-10-12):
+- dev (dev.jsonl): the M5a questions. Their graders were fixed after seeing answers, so they are for development only.
+- heldout (heldout.jsonl): questions written before they are run (owner + Claude, >= 20). Thresholds are set on this
+  set only. A held-out run needs --confirm-heldout and --reason, a clean tree, and is logged in docs/evals/HELDOUT_LOG.md.
 
 Checks per case (only those the case asks for):
 - outcome: an answer was released (injection cases may also be blocked: the claim never reaches the user)
@@ -13,7 +18,8 @@ Every run uses the response cache (AGENT_CACHE semantics), so reruns of unchange
 saved as a recording (responses keyed by request hash + tool outputs + resolved expectations) and replayed in CI by
 tests/test_evals_replay.py without an API key or a database.
 
-Usage: uv run --env-file .env python -m scout.evals.run [--ci] [--max-usd 0.50]
+Usage: uv run --env-file .env python -m scout.evals.run [--set dev|heldout] [--ci] [--max-usd 0.50]
+       ... --set heldout --confirm-heldout --reason "..."
 """
 import argparse
 import json
@@ -27,18 +33,29 @@ from scout.data.manifest import ROOT, git_commit
 from scout.text.linker import fold
 
 HERE = Path(__file__).parent
-GOLDEN = HERE / "golden.jsonl"
+SETS = {"dev": HERE / "dev.jsonl", "heldout": HERE / "heldout.jsonl"}
 RECORDING = HERE / "recordings" / "ci.json"
-REPORT = ROOT / "reports" / "m5a_evals.md"
+HELDOUT_LOG = ROOT / "docs" / "evals" / "HELDOUT_LOG.md"
+MIN_HELDOUT = 20
 DECLINE = ["not in", "isn't in", "is not in", "no data", "not available", "couldn't find", "could not find", "can't",
            "cannot", "don't have", "do not have", "not covered", "outside", "only help", "only cover", "not able",
            "unable", "no information", "not found", "doesn't include", "does not include", "no player found",
            "no players found", "no player named", "no results"]
 
 
-def load_cases(ci_only: bool = False) -> list[dict]:
-    cases = [json.loads(line) for line in GOLDEN.read_text(encoding="utf-8").splitlines() if line.strip()]
+def load_cases(name: str = "dev", ci_only: bool = False) -> list[dict]:
+    cases = [json.loads(line) for line in SETS[name].read_text(encoding="utf-8").splitlines() if line.strip()]
     return [c for c in cases if c.get("ci")] if ci_only else cases
+
+
+def heldout_gate(cases: list[dict], confirm: bool, reason: str | None, commit: str) -> None:
+    """Refuse a held-out run unless it is complete, deliberate and tied to a clean commit."""
+    if len(cases) < MIN_HELDOUT:
+        raise SystemExit(f"held-out set has {len(cases)} cases; it needs at least {MIN_HELDOUT} before any run")
+    if not confirm or not reason:
+        raise SystemExit("a held-out run needs --confirm-heldout and --reason")
+    if commit.endswith("-dirty"):
+        raise SystemExit("commit or stash changes first: held-out runs are tied to a clean commit")
 
 
 def _get(d, path: str):
@@ -141,11 +158,16 @@ def main() -> None:
     import anthropic
     import pandas as pd
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ci", action="store_true", help="only the CI subset")
+    ap.add_argument("--set", choices=list(SETS), default="dev")
+    ap.add_argument("--ci", action="store_true", help="only the CI subset (dev set)")
+    ap.add_argument("--confirm-heldout", action="store_true")
+    ap.add_argument("--reason", default=None)
     ap.add_argument("--max-usd", type=float, default=0.50, help="stop before a case if new spend reached this")
     args = ap.parse_args()
     model = os.environ["AGENT_MODEL"]
-    cases = load_cases(args.ci)
+    cases = load_cases(args.set, args.ci)
+    if args.set == "heldout":
+        heldout_gate(cases, args.confirm_heldout, args.reason, git_commit())
     client, tracer, rows, recording, spent = anthropic.Anthropic(), EvalTracer(), [], [], 0.0
     with tools.connect() as db:
         for case in cases:
@@ -160,22 +182,29 @@ def main() -> None:
                          "violations": len(res["violations"]), "seconds": round(res["seconds"], 1),
                          "new_cost_usd": round(cost_of(res["new"], model), 4), "answer": res["events"][-1].get("text", "")})
             print(rows[-1]["case"], "PASS" if rows[-1]["pass"] else f"FAIL ({rows[-1]['failed']})", flush=True)
-            if case.get("ci"):
+            if case.get("ci") and args.set == "dev":
                 recording.append({"case": case, "expected": expected, "model": model, "responses": res["responses"],
                                   "tool_outputs": res["tool_outputs"], "checks": checks})
     if recording:
         RECORDING.parent.mkdir(exist_ok=True)
         RECORDING.write_text(json.dumps(recording, indent=1, ensure_ascii=False), encoding="utf-8")
     df = pd.DataFrame(rows)
-    write_report(df, model, spent, args.ci)
+    write_report(df, model, spent, args.set, args.ci)
+    if args.set == "heldout":
+        HELDOUT_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with open(HELDOUT_LOG, "a", encoding="utf-8") as f:
+            f.write(f"| {time.strftime('%Y-%m-%d %H:%M')} | `{git_commit()}` | `{model}` | {len(df)} | "
+                    f"{df['pass'].mean():.0%} | {args.reason} |" + chr(10))
 
 
-def write_report(df, model: str, spent: float, ci_only: bool) -> None:
+def write_report(df, model: str, spent: float, name: str, ci_only: bool) -> None:
     from scout.ml.train import md_table
     by_cat = df.groupby("category").agg(cases=("pass", "size"), passed=("pass", "sum"))
     by_cat["pass_rate"] = (by_cat.passed / by_cat.cases).round(2)
     inj = df[df.category == "injection"]
-    lines = [f"# M5a text-free evals (auto-generated by `python -m scout.evals.run{' --ci' if ci_only else ''}`)", "",
+    report = ROOT / "reports" / f"evals_{name}.md"
+    flags = f"--set {name}" + (" --ci" if ci_only else "")
+    lines = [f"# Agent evals: {name} set (auto-generated by `python -m scout.evals.run {flags}`)", "",
              f"Commit `{git_commit()}`, model `{model}`, {len(df)} cases, deterministic checks only (no LLM judge yet: "
              "thresholds for judged metrics stay placeholders until the judge is validated).", "",
              f"- **Pass rate: {df['pass'].mean():.0%}** ({int(df['pass'].sum())}/{len(df)})",
@@ -188,8 +217,8 @@ def write_report(df, model: str, spent: float, ci_only: bool) -> None:
              "## Failed answers", ""]
     for r in df[~df["pass"]].itertuples():
         lines += [f"**{r.case}** ({r.failed}):", "", "> " + r.answer.replace("\n", "\n> "), ""]
-    REPORT.write_text("\n".join(lines), encoding="utf-8")
-    print(f"wrote {REPORT}")
+    report.write_text("\n".join(lines), encoding="utf-8")
+    print(f"wrote {report}")
 
 
 if __name__ == "__main__":

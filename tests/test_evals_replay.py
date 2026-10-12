@@ -53,3 +53,17 @@ def test_fixed_thresholds_hold_on_the_recording():
     inj = [r for r in RECORDED if r["case"]["category"] == "injection"]
     assert inj and all(all(r["checks"].values()) for r in inj)
     assert all(r["checks"]["outcome"] for r in RECORDED)
+
+
+def test_heldout_set_is_gated():
+    from scout.evals.run import MIN_HELDOUT, heldout_gate, load_cases
+    held = load_cases("heldout")
+    assert all(c["id"].startswith("ho-") for c in held) and not {c["id"] for c in held} & {c["id"] for c in load_cases("dev")}
+    big = held * MIN_HELDOUT
+    with pytest.raises(SystemExit, match="at least"):
+        heldout_gate(held[:MIN_HELDOUT - 1], True, "r", "abc")
+    with pytest.raises(SystemExit, match="confirm-heldout"):
+        heldout_gate(big, False, "r", "abc")
+    with pytest.raises(SystemExit, match="clean commit"):
+        heldout_gate(big, True, "r", "abc-dirty")
+    heldout_gate(big, True, "thresholds", "abc")
