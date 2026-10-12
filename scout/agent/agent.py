@@ -33,11 +33,11 @@ from pydantic import ValidationError
 
 from scout.agent import tools
 from scout.agent.numbers import unsupported
-from scout.text.extract import PRICES
+from scout.text.extract import prices
 
 DAILY_CAP_USD = 2.00
 MAX_STEPS = 6
-MAX_TOKENS = 1024
+MAX_TOKENS = 4096  # thinking counts toward it on models that think by default
 
 SYSTEM = f"""You are Scout, an assistant for football scouting questions about player market values.
 Your tools return Transfermarkt market values and a LightGBM forecast of each player's value change over the next
@@ -89,10 +89,10 @@ def sources_footer(answer: str, citations: dict) -> str:
 
 
 def cost_usd(model: str, usage: dict) -> float:
-    pin, pout = PRICES[model]  # KeyError for a model without a price: the spend cap needs one
-    return (usage.get("input_tokens", 0) * pin + usage.get("output_tokens", 0) * pout
-            + (usage.get("cache_read_input_tokens") or 0) * pin * 0.1
-            + (usage.get("cache_creation_input_tokens") or 0) * pin * 1.25) / 1e6
+    read, write = usage.get("cache_read_input_tokens") or 0, usage.get("cache_creation_input_tokens") or 0
+    pin, pout = prices(model, usage.get("input_tokens", 0) + read + write)  # KeyError without a price: the cap needs one
+    return (usage.get("input_tokens", 0) * pin + usage.get("output_tokens", 0) * pout + read * pin * 0.1
+            + write * pin * 1.25) / 1e6
 
 
 class Tracer:
@@ -128,8 +128,10 @@ class Tracer:
 
 
 def _blocks(content: list[dict]) -> list[dict]:
-    """Assistant content as it is sent back to the API (text and tool_use blocks only)."""
-    keep = {"text": ("type", "text"), "tool_use": ("type", "id", "name", "input")}
+    """Assistant content as it is sent back to the API. Thinking blocks go back unmodified, empty text included
+    (models that think by default reject a history whose thinking was edited or dropped)."""
+    keep = {"text": ("type", "text"), "tool_use": ("type", "id", "name", "input"),
+            "thinking": ("type", "thinking", "signature"), "redacted_thinking": ("type", "data")}
     return [{k: b[k] for k in keep[b["type"]]} for b in content if b["type"] in keep]
 
 
@@ -145,6 +147,8 @@ def run(question: str, client, tracer, db, model: str | None = None, use_cache: 
             yield {"type": "refused", "conversation_id": cid, "text": "The daily spending limit has been reached. Please try again tomorrow."}
             return
         req = {"model": model, "max_tokens": MAX_TOKENS, "system": SYSTEM, "tools": tools.tool_specs(), "messages": messages}
+        if os.environ.get("AGENT_EFFORT"):  # models with effort levels (e.g. claude-haiku-5-5: low|medium|high)
+            req["output_config"] = {"effort": os.environ["AGENT_EFFORT"]}
         key = hashlib.sha256(json.dumps(req, sort_keys=True).encode()).hexdigest()
         req["cache_control"] = {"type": "ephemeral"}  # after the key: caching doesn't change the answer
         t0 = time.perf_counter()
@@ -180,6 +184,10 @@ def run(question: str, client, tracer, db, model: str | None = None, use_cache: 
             messages.append({"role": "user", "content": results})
             continue
 
+        if resp["stop_reason"] in ("refusal", "max_tokens"):  # declined by a safety classifier, or out of room
+            yield {"type": "refused", "conversation_id": cid, "text": "I can't answer that one. Please ask about specific "
+                                                                       "players' market values or forecasts."}
+            return
         answer = "".join(b["text"] for b in resp["content"] if b["type"] == "text").strip()
         bad, cite = unsupported(REF.sub("", answer), sources), citation_problems(answer, citations)  # refs aren't claims
         if not bad and not cite:

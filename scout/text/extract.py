@@ -50,9 +50,21 @@ SCHEMA = {
     "required": ["players"], "additionalProperties": False,
 }
 
-# USD per million tokens, standard tier (from the claude-api reference, cached 2026-06-24); Batch API is 50% off.
-PRICES = {"claude-haiku-4-5": (1.00, 5.00), "claude-sonnet-5": (2.00, 10.00), "claude-opus-5": (5.00, 25.00)}
+# USD per million tokens (input, output), standard tier; Batch API is 50% off; cache reads 0.1x input, 5-minute cache
+# writes 1.25x (multipliers stack with the batch discount). Checked against platform.claude.com/docs/en/about-claude/
+# pricing on 2026-10-12: Haiku 5.5 $0.10/$0.50 (batch $0.05/$0.25, cache read $0.01, 5m write $0.125).
+PRICES = {"claude-haiku-5-5": (0.10, 0.50), "claude-haiku-4-5": (1.00, 5.00), "claude-sonnet-5": (2.00, 10.00),
+          "claude-opus-5": (5.00, 25.00)}
+# Haiku 5.5 bills a whole request on a second card when its prompt (input + cache reads + cache writes) is over 100K.
+LONG_PROMPT = {"claude-haiku-5-5": (100_000, (0.50, 2.50))}
 BATCH_DISCOUNT = 0.5
+
+
+def prices(model: str, prompt_tokens: int = 0) -> tuple[float, float]:
+    """(input, output) USD per MTok for one request with this many prompt tokens."""
+    if model in LONG_PROMPT and prompt_tokens > LONG_PROMPT[model][0]:
+        return LONG_PROMPT[model][1]
+    return PRICES[model]  # KeyError for a model without a price: spend caps and estimates need one
 SYSTEM_TOKENS = 350           # approximate size of SYSTEM + schema overhead
 TOKENS_PER_WORD = 1.4         # English news prose, approximate
 OUTPUT_TOKENS_PER_PLAYER = 60
