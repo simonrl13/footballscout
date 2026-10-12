@@ -5,7 +5,7 @@ License and politeness (docs/SPEC.md): text is CC BY-SA 4.0 and is stored with t
 attribution; Wikidata is CC0. Requests are serial (1 at a time, < 5/s), carry a descriptive User-Agent with
 contact, use maxlag, and back off after slow responses (Wikimedia robot policy).
 
-Usage: uv run --env-file .env python -m scout.text.wikipedia [--limit N]     (resumable)
+Usage: uv run --env-file .env python -m scout.text.wikipedia [--limit N] [--demo]     (resumable)
 """
 import argparse
 import http.client
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS wikidata_players (
 );
 CREATE TABLE IF NOT EXISTS wiki_snapshot_revisions (
     player_id integer NOT NULL,
-    as_of     date NOT NULL,                          -- a snapshot date t, or the previous 1 September
+    as_of     date NOT NULL,                          -- a snapshot date t, the previous 1 September, or the demo date
     doc_id    text REFERENCES text_documents (doc_id), -- NULL: no page/revision existed at as_of
     PRIMARY KEY (player_id, as_of)
 );
@@ -159,7 +159,8 @@ def history(title: str, newest: pd.Timestamp, oldest: pd.Timestamp) -> tuple[str
     revs, cont, page_title = [], {}, title
     while True:
         data = _get(API, {"action": "query", "prop": "revisions", "titles": title, "rvprop": "ids|timestamp",
-                          "rvlimit": 500, "rvdir": "older", "rvstart": newest.strftime("%Y-%m-%dT00:00:00Z"),
+                          "rvlimit": 1 if newest == oldest else 500,  # one date: the first revision at or before it
+                          "rvdir": "older", "rvstart": newest.strftime("%Y-%m-%dT00:00:00Z"),
                           "redirects": 1, "format": "json", "formatversion": 2, "maxlag": 5, **cont})
         page = data.get("query", {}).get("pages", [{}])[0]
         page_title = page.get("title", page_title)
@@ -272,11 +273,22 @@ def main() -> None:
     from scout.data.snapshots import YEARS
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--demo", action="store_true", help="the demo players' revisions in force on the demo date instead")
     args = ap.parse_args()
     with store.connect() as conn:
         store.ensure_schema(conn)
         conn.execute(DDL)
         conn.commit()
+        if args.demo:  # the agent cites the page as it stood on the demo date (scout/agent/demo.py)
+            ids = [r[0] for r in conn.execute("SELECT player_id FROM demo_players WHERE player_id NOT IN "
+                                              "(SELECT player_id FROM wikidata_players)").fetchall()]
+            if ids:
+                print(f"wikidata mapping (demo players): {load_mapping(conn, ids):,} found of {len(ids):,}", flush=True)
+            demo = pd.DataFrame(conn.execute("SELECT player_id, as_of FROM demo_players").fetchall(), columns=["player_id", "as_of"])
+            pairs = wanted_pairs(conn, demo.assign(as_of=pd.to_datetime(demo.as_of)))
+            print(f"demo pairs to fetch: {len(pairs):,}", flush=True)
+            print(fetch(conn, pairs.head(args.limit) if args.limit else pairs), flush=True)
+            return
         all_pairs = snapshot_pairs(YEARS)
         if conn.execute("SELECT count(*) FROM wikidata_players").fetchone()[0] == 0:
             print(f"wikidata mapping: {load_mapping(conn, all_pairs.player_id):,} players", flush=True)

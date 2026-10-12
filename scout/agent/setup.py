@@ -20,8 +20,9 @@ def main() -> None:
                 f"SCOUT_TRACER_PASSWORD={pw}\n"
                 f"TRACER_DATABASE_URL=postgresql://scout_tracer:{pw}@127.0.0.1:5432/scout\n"
                 f"SCOUT_API_TOKEN={secrets.token_urlsafe(32)}\n"
-                f"AGENT_MODEL=claude-haiku-4-5\n")
-    print("created role 'scout_tracer'; appended 4 variables to .env (values not shown)")
+                f"AGENT_MODEL=claude-haiku-5-5\n"
+                f"AGENT_EFFORT=medium\n")
+    print("created role 'scout_tracer'; appended 5 variables to .env (values not shown)")
 
 
 if __name__ == "__main__":

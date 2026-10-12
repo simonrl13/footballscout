@@ -14,6 +14,7 @@ Every event needs its own date and a verbatim quote. It is dropped if:
   An undated sentence such as a rumour can't borrow a year, and a sentence can't skip a nearer year for an older one.
 """
 import json
+import os
 import re
 
 import pandas as pd
@@ -23,7 +24,7 @@ from scout.text.extract import BATCH_DISCOUNT, MAX_QUOTE_CHARS, PRICES, _norm
 PROMPT_VERSION = "extract-v2"
 YEAR_RULE = "context-year"  # see the module docstring; was "same-sentence" for the first pilot
 EVENT_TYPES = ["injury", "contract_extension", "contract_expiry", "loan", "transfer"]
-MAX_TOKENS = 3000
+MAX_TOKENS = 8000  # thinking counts toward it on models that think by default
 
 SYSTEM = f"""You extract dated career events about one football player from text taken from his Wikipedia page.
 
@@ -78,7 +79,9 @@ def build_request(doc_id: str, text: str, player_name: str, model: str) -> dict:
         "params": {
             "model": model, "max_tokens": MAX_TOKENS, "system": SYSTEM,
             "messages": [{"role": "user", "content": f"Player: {player_name}\n\n<text>\n{text}\n</text>"}],
-            "output_config": {"format": {"type": "json_schema", "schema": SCHEMA}},
+            # effort only where the model has levels (TEXT_LLM_EFFORT, e.g. low for claude-haiku-5-5)
+            "output_config": {"format": {"type": "json_schema", "schema": SCHEMA},
+                              **({"effort": os.environ["TEXT_LLM_EFFORT"]} if os.environ.get("TEXT_LLM_EFFORT") else {})},
         },
     }
 
@@ -179,7 +182,7 @@ def verify_events(text: str, output: dict, window_start: pd.Timestamp, window_en
 
 
 def estimate_cost(input_tokens: int, output_tokens: int, model: str) -> float:
-    pin, pout = PRICES[model]
+    pin, pout = PRICES[model]  # per-document prompts are far below Haiku 5.5's 100K long-prompt threshold
     return (input_tokens * pin + output_tokens * pout) / 1e6 * BATCH_DISCOUNT
 
 

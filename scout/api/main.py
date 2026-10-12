@@ -1,4 +1,4 @@
-"""Scout API: the four read-only tools as REST endpoints and the agent at POST /ask (server-sent events).
+"""Scout API: the five read-only tools as REST endpoints and the agent at POST /ask (server-sent events).
 
 Every endpoint except /health needs `Authorization: Bearer <SCOUT_API_TOKEN>`. Inputs are validated by the same
 Pydantic models the agent's tools use. Data access uses the read-only role; traces use scout_tracer.
@@ -66,6 +66,12 @@ def get_player(player_id: PlayerIdPath, conn: DB):
 @app.get("/players/{player_id}/forecast", dependencies=[Auth])
 def predict_value_change(player_id: PlayerIdPath, conn: DB):
     return _found(tools.predict_value_change(conn, tools.PlayerId(player_id=player_id)))
+
+
+@app.get("/text/search", dependencies=[Auth])
+def search_text(a: Annotated[tools.TextSearch, Query()], conn: DB):
+    """Wikipedia passages (CC BY-SA 4.0) with their exact revision links."""
+    return tools.search_text(conn, a)
 
 
 @app.post("/players/compare", dependencies=[Auth])

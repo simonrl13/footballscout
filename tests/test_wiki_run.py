@@ -48,7 +48,7 @@ class FakeBatches:
 
     def results(self, _id):
         for cid in self.ids:
-            msg = NS(content=[NS(type="text", text=self.reply)], usage=NS(input_tokens=800, output_tokens=60))
+            msg = NS(content=[NS(type="text", text=self.reply)], usage=NS(input_tokens=800, output_tokens=60), stop_reason="end_turn")
             yield NS(custom_id=cid, result=NS(type="succeeded", message=msg))
 
 

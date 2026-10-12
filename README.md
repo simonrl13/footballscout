@@ -9,10 +9,11 @@ Forecasts how a player's Transfermarkt market value will change over the next 12
 ## Status
 - [x] **M1** — data pipeline rebuilt to the SPEC, point-in-time features with leakage tests, baselines, test-set gate, reproducibility, DB roles, security gates
 - [x] **M2** — MLflow tracking, validation-only tuning pass, 80% prediction intervals (split-conformal), excluded-share report (a Guardian client was built in M2 and removed in M3; nothing was ever fetched)
-- [ ] **M3 (in progress)** — *Stats feature pass (pre-registered): negative, B0 stays the baseline ([reports/m3_stats_pass.md](reports/m3_stats_pass.md)). Wikipedia revision fetch running; `extract-v2` pilot done ($0.11, [reports/m3a_pilot.md](reports/m3a_pilot.md)); full extraction waits for budget.* Public-text features. The Guardian was dropped (its terms prohibit AI use; nothing was stored). Sources evaluated read-only: Wikipedia revision history + Wikidata (LLM track) and GDELT (attention track); see [reports/m3_sources.md](reports/m3_sources.md). Source-agnostic linker, extraction with verbatim-quote checks, and point-in-time features are built and tested offline.
-- [x] **M4a** — tools API + Claude agent (no text yet): 4 read-only tools, number check with retry/block, US$2/day spend cap, per-call traces. See [Agent (M4a)](#agent-m4a).
+- [ ] **M3 (in progress)** — *Stats feature pass (pre-registered): negative, B0 stays the baseline ([reports/m3_stats_pass.md](reports/m3_stats_pass.md)). Wikipedia revision fetch done (37,665 snapshot pairs, 8,179 players); `extract-v2` pilots: [first](reports/m3a_pilot.md) ($0.11, Haiku 4.5), [second](reports/m3a_pilot2.md) (Haiku 5.5, year rule `context-year`); full extraction waits for budget.* Public-text features. The Guardian was dropped (its terms prohibit AI use; nothing was stored). Sources evaluated read-only: Wikipedia revision history + Wikidata (LLM track) and GDELT (attention track); see [reports/m3_sources.md](reports/m3_sources.md). Source-agnostic linker, extraction with verbatim-quote checks, and point-in-time features are built and tested offline.
+- [x] **M4a** — tools API + Claude agent (no text yet): 4 read-only tools, number check with retry/block, US$2/day spend cap, per-call traces. See [Agent](#agent-m4a-m4b).
 - [x] **M5a** — MCP server (stdio, same 4 read-only tools) + 30-question text-free eval set with deterministic checks; CI replays a 13-case recorded subset without an API key. See [Evals and MCP (M5a)](#evals-and-mcp-m5a).
-- [ ] Wikipedia retrieval and citations · M4b/M5b — text in the agent · M6 — ops · M7 — AWS deploy
+- [x] **M4b (text, no extraction)** — `search_text` over the demo players' Wikipedia pages (Postgres full-text search), every answer citing the exact revision with the CC BY-SA notice; agent on Claude Haiku 5.5; tracing dashboard and prompt caching (M6 pieces). See [Agent](#agent-m4a-m4b).
+- [ ] Owner's held-out questions + first held-out run · LLM judge · Wikipedia extraction (after the second pilot and a top-up) · rate limits (M6) · M7 — AWS deploy
 
 ## Problem (from the SPEC)
 - **Unit:** one player on **1 September** each year, 2013–2024.
@@ -55,8 +56,8 @@ uv run --env-file .env pytest                            # all tests (DB tests s
 ```
 Trained models go to `models/<run_id>/`, which is never overwritten; `models/LATEST` names the current run. Reports go to [reports/](reports/).
 
-## Agent (M4a)
-A Claude tool-calling agent over four read-only tools, also exposed as REST endpoints (all need `Authorization: Bearer $SCOUT_API_TOKEN`):
+## Agent (M4a, M4b)
+A Claude tool-calling agent over five read-only tools, also exposed as REST endpoints (all need `Authorization: Bearer $SCOUT_API_TOKEN`):
 
 | Tool | Endpoint | Returns |
 |---|---|---|
@@ -64,21 +65,24 @@ A Claude tool-calling agent over four read-only tools, also exposed as REST endp
 | `get_player` | `GET /players/{id}` | club, league, position, age, Transfermarkt value and its date |
 | `predict_value_change` | `GET /players/{id}/forecast` | 12-month forecast (%), 80% interval, implied values, top 5 SHAP factors |
 | `compare_players` | `POST /players/compare` | 2–5 players side by side |
+| `search_text` | `GET /text/search` | up to 5 passages from players' English Wikipedia pages as of the demo date, each with its exact revision link, page history and license |
 | (agent) | `POST /ask` | server-sent events: tool calls, then one checked answer |
 
 - **Data:** the demo snapshot is **12 June 2026**, the last valuation date in the data, built with the same point-in-time code as training (`build_snapshots(..., as_of=...)`) and precomputed into `demo_players`. The model was trained on 1-September snapshots, so June forecasts are a demo, and every tool result says so.
 - **Number check:** every number in an answer must appear in this turn's tool results, the question or the fixed facts in the system prompt (data date, horizon, interval level, league names). On a violation the agent gets one retry with feedback; if it fails again, the answer is blocked. Both cases are logged in `agent_violations`. The answer is therefore released only after the check: `/ask` streams progress events, not raw tokens.
-- **Guardrails:** Pydantic models with limits (unknown fields rejected) for every tool and endpoint; parameterized SQL with `psycopg.sql` identifiers; read-only role and read-only transactions; max 6 model calls and 1,024 output tokens per call; **US$2/day spend cap** across all agent calls, checked before each call.
-- **Observability:** one `agent_calls` row per model call (tokens, cost, latency, requested tools, cache hit). `AGENT_CACHE=true` serves identical requests from `agent_cache` (development and evals).
-- **Model:** `AGENT_MODEL` from `.env` (development: `claude-haiku-4-5`). Development spend so far: about US$0.05.
-- **Not yet:** Wikipedia text and citations, rate limits (M6).
+- **Wikipedia text and citations:** each demo player's page as it stood on the demo date (2,616 of 2,649 players; revisions up to 11 June 2026) is split into 37,375 passages indexed with Postgres full-text search (free; embeddings only if evals show it isn't enough). Facts from a passage are labelled `[wiki n]`; the code, not the model, appends the sources: exact revision link (`oldid`), page history (authors) and the CC BY-SA 4.0 notice. A citation check retries, then blocks, answers that cite a ref no search returned or quote more than 300 characters. Passages are untrusted data; a planted-injection passage is an eval case.
+- **Guardrails:** Pydantic models with limits (unknown fields rejected) for every tool and endpoint; parameterized SQL with `psycopg.sql` identifiers; read-only role and read-only transactions; max 6 model calls and 4,096 output tokens per call (thinking included); **US$2/day spend cap** across all agent calls, checked before each call.
+- **Observability:** one `agent_calls` row per model call (tokens, cost, latency, requested tools, cache hits). `python -m scout.agent.dashboard` shows cost per day and per conversation, prompt-cache hit rate, p50/p95 latency and violations (views in `db/agent.sql`). `AGENT_CACHE=true` serves identical requests from `agent_cache` (development and evals).
+- **Prompt caching:** automatic caching on every request (tools, system prompt, history). On Haiku 5.5 the dev eval run read 158,833 tokens from the cache against 262 uncached input tokens.
+- **Model:** `AGENT_MODEL` / `AGENT_EFFORT` from `.env`: `claude-haiku-5-5` at effort `medium` since 2026-10-12 (about 8x cheaper per question than Haiku 4.5 with the same dev-set result; see the research log).
+- **Not yet:** rate limits (M6), an LLM judge, the held-out eval run.
 
 ## Evals and MCP (M5a)
-- **MCP server** ([scout/mcp_server.py](scout/mcp_server.py)): the same four tools over stdio, annotated read-only, arguments validated against the same Pydantic limits before any query. Try it with `npx @modelcontextprotocol/inspector uv run --env-file .env python -m scout.mcp_server`.
-- **Two sets.** Dev ([scout/evals/dev.jsonl](scout/evals/dev.jsonl)): the 30 M5a questions, development only because their graders were fixed after seeing answers. Held-out ([scout/evals/heldout.jsonl](scout/evals/heldout.jsonl)): questions written before they are run (10 by Claude, 10 by the owner via [docs/evals/my_questions.md](docs/evals/my_questions.md)); thresholds are set only on it, and each run is gated and logged in [docs/evals/HELDOUT_LOG.md](docs/evals/HELDOUT_LOG.md).
-- **Dev set**: 30 questions in six categories (lookup, forecast, comparison, search, unanswerable, injection), including traps such as "Messi" (only Junior Messias is in the data) and a transfer-fee question the tools can't answer.
+- **MCP server** ([scout/mcp_server.py](scout/mcp_server.py)): the same five tools over stdio, annotated read-only, arguments validated against the same Pydantic limits before any query. Try it with `npx @modelcontextprotocol/inspector uv run --env-file .env python -m scout.mcp_server`.
+- **Two sets.** Dev ([scout/evals/dev.jsonl](scout/evals/dev.jsonl)): the 30 M5a questions plus 7 Wikipedia questions, development only because their checks were changed after seeing answers (twice; see the research log). Held-out ([scout/evals/heldout.jsonl](scout/evals/heldout.jsonl)): questions written before they are run (10 by Claude, 10 by the owner via [docs/evals/my_questions.md](docs/evals/my_questions.md)); thresholds are set only on it, and each run is gated and logged in [docs/evals/HELDOUT_LOG.md](docs/evals/HELDOUT_LOG.md).
+- **Dev set**: 37 questions in seven categories (lookup, forecast, comparison, search, unanswerable, injection, text), including a planted-injection Wikipedia passage and traps such as "Messi" (only Junior Messias is in the data) and a transfer-fee question the tools can't answer.
 - **Checks are deterministic** (no LLM judge yet): numbers the answer must quote are read from the tools at eval time; the right player must be named; phrases present or absent; the Transfermarkt caveat and the 80% interval; declines for unanswerables.
-- **Result** ([reports/m5a_evals.md](reports/m5a_evals.md), `claude-haiku-4-5`): 30/30 after fixing two grader bugs found in the first run (24/30); injections resisted 3/3; 2 number-check violations caught and fixed by the retry. First live run: $0.195, median 3.0 s per question.
+- **Results with identical checks:** Haiku 5.5 37/37 ([reports/evals_dev.md](reports/evals_dev.md); live run $0.030, median 4.1 s per question); Haiku 4.5's M5a answers re-graded 30/30 ([reports/evals_dev_haiku45_regrade.md](reports/evals_dev_haiku45_regrade.md); live run $0.195, median 3.0 s). These are dev-set numbers, not threshold evidence.
 - **CI:** [tests/test_evals_replay.py](tests/test_evals_replay.py) replays the 13-case CI subset through the real agent loop and graders from a recording, with no API key or database. Responses are keyed by request hash, so any change to the prompt, tool specs or tool outputs fails the replay until it is re-recorded (`python -m scout.evals.run --ci`).
 
 ## How the data is built (M1)

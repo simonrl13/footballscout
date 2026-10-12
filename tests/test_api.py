@@ -23,7 +23,7 @@ AUTH = {"Authorization": f"Bearer {TOKEN}"}
 
 def test_every_data_endpoint_needs_the_token(client):
     for method, url in [("get", "/players/1"), ("get", "/players/1/forecast"), ("get", "/players/search?name=ka"),
-                        ("post", "/players/compare"), ("post", "/ask")]:
+                        ("post", "/players/compare"), ("post", "/ask"), ("get", "/text/search?query=knee")]:
         assert getattr(client, method)(url).status_code == 401, url
         assert getattr(client, method)(url, headers={"Authorization": "Bearer wrong"}).status_code == 401, url
 
@@ -47,6 +47,8 @@ def test_valid_requests_and_not_found(client):
     ("post", "/players/compare", {"player_ids": [1]}),
     ("post", "/players/compare", {"player_ids": [1, 2, 3, 4, 5, 6]}),
     ("post", "/ask", {"question": "x" * 501}),
+    ("get", "/text/search?query=k", None),
+    ("get", "/text/search?query=knee&limit=6", None),
     ("post", "/ask", {"question": "Who?", "model": "claude-opus-5"}),
 ])
 def test_invalid_input_is_rejected(client, method, url, body):

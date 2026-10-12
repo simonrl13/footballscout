@@ -79,7 +79,10 @@ def run_batch(conn, client, docs: list[dict], model: str, sleep=time.sleep) -> d
         if status == "succeeded":
             msg = res.result.message
             usage = msg.usage
-            out = xw.parse_output(next((b.text for b in msg.content if b.type == "text"), '{"events": []}'))
+            if msg.stop_reason in ("refusal", "max_tokens"):  # declined, or cut off mid-JSON: no events, status kept
+                status, out = msg.stop_reason, {"events": []}
+            else:
+                out = xw.parse_output(next((b.text for b in msg.content if b.type == "text"), '{"events": []}'))
             kept, dropped = xw.verify_events(d["text"], out, *d["window"], body=d["body"])
             stats["succeeded"] += 1
             stats["raw_events"] += len(out.get("events", []))

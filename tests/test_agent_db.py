@@ -3,6 +3,7 @@ import os
 
 import psycopg
 import pytest
+from psycopg import sql
 
 from scout.agent import tools
 
@@ -45,3 +46,12 @@ def test_tracer_role_cannot_touch_project_data():
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
                 c.execute(stmt)
             c.rollback()
+
+
+def test_dashboard_views_are_readable_by_the_reader_role():
+    with tools.connect() as c:
+        for view in ("agent_daily", "agent_conversations"):
+            try:
+                c.execute(sql.SQL("SELECT * FROM {} LIMIT 1").format(sql.Identifier(view))).fetchall()
+            except psycopg.errors.UndefinedTable:
+                pytest.skip("dashboard views not installed (python -m scout.agent.dashboard --install)")

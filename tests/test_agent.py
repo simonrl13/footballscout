@@ -36,7 +36,7 @@ class FakeTracer:
         self.spent, self.calls, self.violations, self.cache = spent, [], [], {}
 
     def spent_today(self):
-        return self.spent + sum(c[4] for c in self.calls)
+        return self.spent + sum(c[3] for c in self.calls)  # (step, model, usage, cost, ...)
 
     def call(self, *args):
         self.calls.append(args[1:])
@@ -136,7 +136,7 @@ def test_number_check():
 
 def test_tool_specs_come_from_the_pydantic_models():
     specs = {s["name"]: s for s in tools.tool_specs()}
-    assert set(specs) == {"get_player", "predict_value_change", "search_players", "compare_players"}
+    assert set(specs) == {"get_player", "predict_value_change", "search_players", "compare_players", "search_text"}
     assert specs["search_players"]["input_schema"]["properties"]["limit"]["maximum"] == 20
     assert specs["search_players"]["input_schema"]["additionalProperties"] is False
 
@@ -154,3 +154,81 @@ def test_whole_numbers_may_truncate_but_not_drift():
     tool = '{"age": 40.8, "predicted_change_pct": -29.7}'
     assert unsupported("He is 40 years old; a 29% or 30% fall.", [tool]) == []
     assert unsupported("He is 39 years old; a 28% fall.", [tool]) == ["39", "28"]
+
+
+PASSAGE = {"player_id": 132098, "player": "Harry Kane", "section": "Bayern Munich", "text": "In 2025 Kane won the league.",
+           "revision_date": "2026-06-01", "revision_url": "https://en.wikipedia.org/w/index.php?oldid=111",
+           "page_history": "https://en.wikipedia.org/w/index.php?title=Harry+Kane&action=history", "license": "CC BY-SA 4.0"}
+
+
+@pytest.fixture
+def wiki(monkeypatch):
+    def fake(db, name, args):
+        tools.TextSearch.model_validate(args)
+        return {"count": 2, "passages": [dict(PASSAGE), dict(PASSAGE, revision_url="https://en.wikipedia.org/w/index.php?oldid=222")]}
+    monkeypatch.setattr(tools, "run_tool", fake)
+
+
+def test_cited_passages_get_an_exact_revision_footer_with_the_license(wiki):
+    client = FakeClient(tool_use("search_text", {"query": "league title", "player_id": 132098}),
+                        text("Kane won the league in 2025 [wiki 2]."))
+    events, _ = run(client)
+    out = events[-1]
+    assert out["type"] == "answer" and out["citations"] == 1
+    assert "[wiki 2] Harry Kane's Wikipedia page, revision of 2026-06-01: https://en.wikipedia.org/w/index.php?oldid=222" in out["text"]
+    assert "oldid=111" not in out["text"] and "CC BY-SA 4.0" in out["text"] and "action=history" in out["text"]
+    result = client.requests[1]["messages"][-1]["content"][0]["content"]
+    assert '"ref": "wiki 1"' in result and '"ref": "wiki 2"' in result
+
+
+def test_invented_refs_and_long_quotes_are_retried_then_blocked(wiki):
+    long_quote = '"' + "x" * 301 + '"'
+    client = FakeClient(tool_use("search_text", {"query": "league"}), text("Kane won the league [wiki 3]."),
+                        text(f"Kane: {long_quote} [wiki 1]."))
+    events, tracer = run(client)
+    assert events[-1]["type"] == "blocked"
+    assert [(v[0], v[2]) for v in tracer.violations] == [("citation_check", "retried"), ("citation_check", "blocked")]
+    assert "[wiki 3] does not exist" in client.requests[2]["messages"][-1]["content"]
+
+
+def test_answers_without_wikipedia_get_no_footer():
+    client = FakeClient(text("I only cover 7 leagues."))
+    events, _ = run(client, question="Weather?")
+    assert "Sources" not in events[-1]["text"] and events[-1]["citations"] == 0
+
+
+def test_every_request_asks_for_prompt_caching_and_cache_tokens_are_priced():
+    client = FakeClient(text("I only cover 7 leagues."))
+    run(client, question="Weather?")
+    assert client.requests[0]["cache_control"] == {"type": "ephemeral"}
+    usage = {"input_tokens": 100, "output_tokens": 10, "cache_read_input_tokens": 4000, "cache_creation_input_tokens": 0}
+    assert agent.cost_usd("claude-haiku-4-5", usage) == pytest.approx((100 * 1 + 10 * 5 + 4000 * 0.1) / 1e6)
+
+
+def test_thinking_blocks_are_passed_back_unmodified_even_when_empty():
+    thinking = {"type": "thinking", "thinking": "", "signature": "sig-abc"}
+    first = tool_use("predict_value_change", {"player_id": 132098})
+    first["content"].insert(0, thinking)
+    client = FakeClient(first, text("The model forecasts a 38.4% fall (80% interval -57.4% to -7.6%)."))
+    run(client)
+    assert client.requests[1]["messages"][1]["content"][0] == thinking
+
+
+def test_refusal_and_running_out_of_tokens_are_refused_not_answered():
+    for stop in ("refusal", "max_tokens"):
+        events, _ = run(FakeClient({"content": [], "stop_reason": stop, "usage": USAGE}))
+        assert events[-1]["type"] == "refused"
+
+
+def test_haiku_5_5_prices_and_its_long_prompt_card():
+    small = {"input_tokens": 2000, "output_tokens": 500}
+    assert agent.cost_usd("claude-haiku-5-5", small) == pytest.approx((2000 * 0.10 + 500 * 0.50) / 1e6)
+    big = {"input_tokens": 90_000, "output_tokens": 100, "cache_read_input_tokens": 20_000}
+    assert agent.cost_usd("claude-haiku-5-5", big) == pytest.approx((90_000 * 0.50 + 100 * 2.50 + 20_000 * 0.05) / 1e6)
+
+
+def test_effort_comes_from_env(monkeypatch):
+    monkeypatch.setenv("AGENT_EFFORT", "medium")
+    client = FakeClient(text("I only cover 7 leagues."))
+    run(client, question="Weather?")
+    assert client.requests[0]["output_config"] == {"effort": "medium"}
