@@ -21,7 +21,7 @@ import pandas as pd
 
 from scout.text.extract import BATCH_DISCOUNT, MAX_QUOTE_CHARS, PRICES, _norm
 
-PROMPT_VERSION = "extract-v2"
+PROMPT_VERSION = "extract-v3"  # v3 (2026-10-12): contract_until; v2 = the two pilots
 YEAR_RULE = "context-year"  # see the module docstring; was "same-sentence" for the first pilot
 EVENT_TYPES = ["injury", "contract_extension", "contract_expiry", "loan", "transfer"]
 MAX_TOKENS = 8000  # thinking counts toward it on models that think by default
@@ -38,8 +38,11 @@ Rules:
   (a permanent move to another club). Do not report rumours, interest, bids or speculation.
 - date: the date the text gives for the event, as YYYY-MM-DD, or YYYY-MM if only the month is stated, or YYYY if
   only the year is stated. Never infer a date the text does not give.
+- contract_until: when the text states when his contract (new, extended or with a new club) ends, give that end
+  date as YYYY-MM-DD, YYYY-MM or YYYY (e.g. "until June 2017" -> 2017-06); otherwise null. Never infer it.
 - evidence: copy the shortest exact fragment of the text that states the event, character for character, at most
-  {MAX_QUOTE_CHARS} characters. Events without an exact quote are discarded.
+  {MAX_QUOTE_CHARS} characters; when you give contract_until, the fragment must include the words that state it.
+  Events without an exact quote are discarded.
 - Return an empty events list if the text states none."""
 
 SCHEMA = {
@@ -51,18 +54,21 @@ SCHEMA = {
             "date": {"type": "string"},
             "injury_type": {"type": ["string", "null"]},
             "duration_days": {"type": ["integer", "null"]},
+            "contract_until": {"type": ["string", "null"]},
             "evidence": {"type": "string"},
         },
-        "required": ["type", "date", "injury_type", "duration_days", "evidence"],
+        "required": ["type", "date", "injury_type", "duration_days", "contract_until", "evidence"],
         "additionalProperties": False}}},
     "required": ["events"], "additionalProperties": False,
 }
 
-_SENT = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(])")
+# Sentence ends: . ! ? then space then a capital, digit, quote or bracket. Not after a lone 1-2 digit number:
+# "1. FSV Mainz 05", "1. FC Köln" and "2. Bundesliga" are names, not sentence ends ("in 2016. He" still splits).
+SENT = re.compile(r"(?<!\b\d\.)(?<!\b\d\d\.)(?<=[.!?])\s+(?=[A-Z0-9\"'(])")
 
 
 def sentences(text: str) -> list[str]:
-    return [s.strip() for para in text.split("\n") for s in _SENT.split(para) if len(s.strip()) > 20]
+    return [s.strip() for para in text.split("\n") for s in SENT.split(para) if len(s.strip()) > 20]
 
 
 def new_text(body_t: str, body_prev: str | None) -> str:
@@ -179,6 +185,25 @@ def verify_events(text: str, output: dict, window_start: pd.Timestamp, window_en
                      "injury_type": e.get("injury_type"), "duration_days": e.get("duration_days"),
                      "evidence_start": span[0], "evidence_end": span[1]})
     return kept, dropped
+
+
+def contract_statements(text: str, output: dict) -> list[dict]:
+    """Contract end dates the text states, from any event with a verbatim quote, whatever the event's own date or
+    window (a statement in a document published before t is known at t). The end date's year must be written in the
+    quote itself."""
+    out, seen = [], set()
+    for e in output.get("events", []):
+        until = parse_date(e.get("contract_until") or "")
+        evidence = e.get("evidence", "")
+        span = locate(text, evidence) if until and len(_norm(evidence)) <= MAX_QUOTE_CHARS else None
+        if span is None or str(until[0].year) not in text[span[0]:span[1]]:
+            continue
+        key = (until[0].date(), span[0])
+        if key not in seen:
+            seen.add(key)
+            out.append({"signal_type": "contract_until", "event_date": until[0].date(), "precision": until[1],
+                        "source_type": e.get("type"), "evidence_start": span[0], "evidence_end": span[1]})
+    return out
 
 
 def estimate_cost(input_tokens: int, output_tokens: int, model: str) -> float:

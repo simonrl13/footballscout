@@ -48,7 +48,7 @@ def derived_docs(conn, py: pd.DataFrame) -> list[dict]:
         url = (f"https://en.wikipedia.org/w/index.php?diff={rev_t}&oldid={rev_p}" if rev_p
                else f"https://en.wikipedia.org/w/index.php?oldid={rev_t}")
         conn.execute("INSERT INTO text_documents (doc_id, source, url, available_at, meta, body) VALUES (%s, 'wikipedia', %s, %s, %s, %s) "
-                     "ON CONFLICT (doc_id) DO NOTHING",
+                     "ON CONFLICT (doc_id) DO UPDATE SET body = EXCLUDED.body",  # offsets must match the current splitter
                      (doc_id, url, meta[r.doc_t], Jsonb({"title": r.title, "player_id": int(r.player_id), "snapshot": str(r.t.date()),
                                                          "derived": "new-in-year", "license": "CC BY-SA 4.0"}), text))
         out.append({"doc_id": doc_id, "url": url, "text": text, "player_id": int(r.player_id), "title": r.title, "doc_t": r.doc_t,
@@ -58,24 +58,36 @@ def derived_docs(conn, py: pd.DataFrame) -> list[dict]:
     return out
 
 
+BATCH_SIZE = 5000  # requests per Message Batch (keeps each batch well under the API's size limit); committed per batch
+
+
 def run_batch(conn, client, docs: list[dict], model: str, sleep=time.sleep) -> dict:
-    from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
-    from anthropic.types.messages.batch_create_params import Request
+    """Extract every not-yet-extracted document, BATCH_SIZE requests per Message Batch. Each batch is committed when
+    its results are stored, so an interrupted run resumes where it stopped."""
     done = {r[0] for r in conn.execute("SELECT doc_id FROM text_extractions WHERE prompt_version = %s", (xw.PROMPT_VERSION,)).fetchall()}
     docs = [d for d in docs if d["doc_id"] not in done and d["text"].strip()]
     stats = {"submitted": len(docs), "succeeded": 0, "input_tokens": 0, "output_tokens": 0, "raw_events": 0, "kept": 0,
-             "dropped": {}, "kept_by_type": {}}
-    if not docs:
-        return stats
+             "dropped": {}, "kept_by_type": {}, "contract_statements": 0, "batch_ids": []}
+    for i in range(0, len(docs), BATCH_SIZE):
+        _one_batch(conn, client, docs[i:i + BATCH_SIZE], model, sleep, stats)
+        print(f"batch {len(stats['batch_ids'])}: {min(i + BATCH_SIZE, len(docs)):,}/{len(docs):,} documents done", flush=True)
+    stats["batch_id"] = ", ".join(stats["batch_ids"])
+    return stats
+
+
+def _one_batch(conn, client, docs: list[dict], model: str, sleep, stats: dict) -> None:
+    from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
+    from anthropic.types.messages.batch_create_params import Request
     reqs = {xw.build_request(d["doc_id"], d["text"], d["title"], model)["custom_id"]: d for d in docs}
     batch = client.messages.batches.create(requests=[
         Request(custom_id=cid, params=MessageCreateParamsNonStreaming(**xw.build_request(d["doc_id"], d["text"], d["title"], model)["params"]))
         for cid, d in reqs.items()])
+    stats["batch_ids"].append(batch.id)
     while client.messages.batches.retrieve(batch.id).processing_status != "ended":
         sleep(30)
     for res in client.messages.batches.results(batch.id):
         d = reqs[res.custom_id]
-        status, usage, kept, out = res.result.type, None, [], None
+        status, usage, kept, out, statements = res.result.type, None, [], None, []
         if status == "succeeded":
             msg = res.result.message
             usage = msg.usage
@@ -84,6 +96,7 @@ def run_batch(conn, client, docs: list[dict], model: str, sleep=time.sleep) -> d
             else:
                 out = xw.parse_output(next((b.text for b in msg.content if b.type == "text"), '{"events": []}'))
             kept, dropped = xw.verify_events(d["text"], out, *d["window"], body=d["body"])
+            statements = xw.contract_statements(d["text"], out)
             stats["succeeded"] += 1
             stats["raw_events"] += len(out.get("events", []))
             for k, v in dropped.items():
@@ -101,10 +114,14 @@ def run_batch(conn, client, docs: list[dict], model: str, sleep=time.sleep) -> d
                           k["evidence_end"], k["event_date"], k["precision"],
                           Jsonb({"injury_type": k["injury_type"], "duration_days": k["duration_days"]})))
             stats["kept_by_type"][k["signal_type"]] = stats["kept_by_type"].get(k["signal_type"], 0) + 1
+        for k in statements:  # contract end dates: any window; known from the document's publication on
+            conn.execute("INSERT INTO text_signals (doc_id, prompt_version, player_id, signal_type, detail, evidence_start, evidence_end, "
+                         "event_date, date_precision, attributes) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                         (d["doc_id"], xw.PROMPT_VERSION, d["player_id"], k["signal_type"], k["source_type"], k["evidence_start"],
+                          k["evidence_end"], k["event_date"], k["precision"], Jsonb({})))
         stats["kept"] += len(kept)
+        stats["contract_statements"] += len(statements)
     conn.commit()
-    stats["batch_id"] = batch.id
-    return stats
 
 
 def main() -> None:

@@ -98,3 +98,30 @@ def test_quote_spanning_two_sentence_lines_is_located_by_its_first():
     prev = "On 16 September 2014, he left Benfica."
     body = prev + " The following month he signed with club C.F. Os Belenenses, making his debut."
     assert year_check(body, prev, "2014-10", "he signed with club C.F. Os Belenenses") == ""
+
+
+def test_sentence_splitter_keeps_numbered_club_names_and_still_splits_after_years():
+    from scout.text.extract_wiki import sentences
+    text = ("In January 2019, Szalai was loaned to 1. FSV Mainz 05 until June. He scored twice in 2019. "
+            "Later he joined 1. FC Köln, then played in the 2. Bundesliga for a season. Kane scored 2 goals.")
+    assert sentences(text) == ["In January 2019, Szalai was loaned to 1. FSV Mainz 05 until June.",
+                               "He scored twice in 2019.",
+                               "Later he joined 1. FC Köln, then played in the 2. Bundesliga for a season."]
+
+
+def test_contract_statements_need_the_end_year_in_the_quote_but_not_a_window():
+    from scout.text.extract_wiki import contract_statements
+    text = ("On 6 August 2012, Albiol renewed his contract with Real Madrid until June 2017.\n"
+            "In 2015 he extended his deal with the club.")
+    out = {"events": [
+        {"type": "contract_extension", "date": "2012-08-06", "contract_until": "2017-06",       # old event: still a statement
+         "evidence": "Albiol renewed his contract with Real Madrid until June 2017"},
+        {"type": "contract_extension", "date": "2015", "contract_until": "2019",                # 2019 not in the quote
+         "evidence": "In 2015 he extended his deal with the club"},
+        {"type": "transfer", "date": "2012-08-06", "contract_until": None, "evidence": "Albiol renewed his contract"},
+        {"type": "contract_extension", "date": "2012-08-06", "contract_until": "2017-06",       # not verbatim
+         "evidence": "Albiol signed until 2017"},
+    ]}
+    st = contract_statements(text, out)
+    assert [(s["event_date"].isoformat(), s["precision"], s["source_type"]) for s in st] == [("2017-06-01", "month", "contract_extension")]
+    assert text[st[0]["evidence_start"]:st[0]["evidence_end"]].endswith("until June 2017")

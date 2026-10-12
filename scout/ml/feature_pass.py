@@ -54,11 +54,11 @@ def ridge(train, test, numeric):
     return m.fit(train, train.target).predict(test)
 
 
-def evaluate(df):
+def evaluate(df, candidates=CANDIDATES):
     folds = [(y, df[df.year < y], df[df.year == y]) for y in CV_YEARS] + [(VAL_YEAR, df[df.year.isin(TRAIN_YEARS)], df[df.year == VAL_YEAR])]
     y_all = np.concatenate([ev.target.to_numpy() for _, _, ev in folds])
     preds, rows = {}, []
-    for name, extra in CANDIDATES.items():
+    for name, extra in candidates.items():
         numeric = NUMERIC + extra
         for model, fn in [("LightGBM", lgbm), ("Ridge", ridge)]:
             p = [fn(tr, ev, numeric) for _, tr, ev in folds]
@@ -69,7 +69,7 @@ def evaluate(df):
     table = pd.DataFrame(rows)
     comp = []
     b0 = table[(table.set == "B0") & (table.model == "LightGBM")]["mean CV MAE (2016–2021)"].iloc[0]
-    for name in CANDIDATES:
+    for name in candidates:
         lg_row = table[(table.set == name) & (table.model == "LightGBM")].iloc[0]
         d, lo, hi = mae_diff_ci(y_all, preds[(name, "LightGBM")], preds[("B0", "LightGBM")])
         dl, lol, hil = mae_diff_ci(y_all, preds[(name, "LightGBM")], preds[(name, "Ridge")])
