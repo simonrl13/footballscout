@@ -71,5 +71,10 @@ def test_new_in_year_document_extraction_and_verification(conn):
     row = conn.execute("SELECT signal_type, event_date, date_precision FROM text_signals WHERE doc_id = %s", (docs[0]["doc_id"],)).fetchone()
     assert row[0] == "contract_extension" and str(row[1]) == "2017-01-13" and row[2] == "day"
     assert run_batch(conn, NS(messages=NS(batches=FakeBatches(reply))), docs, "m")["submitted"] == 0  # cached
+    from scout.text.wiki_run import reverify
+    before = conn.execute("SELECT signal_type, event_date FROM text_signals WHERE doc_id = %s ORDER BY 1", (docs[0]["doc_id"],)).fetchall()
+    again = reverify(conn, docs)  # same stored output, same rules -> the same signals, rebuilt without any API call
+    assert again["kept"] == 1 and conn.execute("SELECT signal_type, event_date FROM text_signals WHERE doc_id = %s ORDER BY 1",
+                                               (docs[0]["doc_id"],)).fetchall() == before
     assert conn.execute("SELECT output FROM text_extractions WHERE doc_id = %s", (docs[0]["doc_id"],)).fetchone()[0]["events"]
 

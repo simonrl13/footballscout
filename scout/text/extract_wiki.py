@@ -109,12 +109,15 @@ def locate(text: str, quote: str) -> tuple[int, int] | None:
 
 
 def parse_date(s: str) -> tuple[pd.Timestamp, str] | None:
+    """(date, precision) for YYYY-MM-DD / YYYY-MM / YYYY; None for anything else, empty included (pandas turns ""
+    into NaT without raising, and NaT's year prints as "nan")."""
     s = (s or "").strip()
     for fmt, prec in (("%Y-%m-%d", "day"), ("%Y-%m", "month"), ("%Y", "year")):
         try:
-            return pd.Timestamp(pd.to_datetime(s, format=fmt)), prec
+            d = pd.Timestamp(pd.to_datetime(s, format=fmt))
         except (ValueError, TypeError):
             continue
+        return None if pd.isna(d) else (d, prec)
     return None
 
 
