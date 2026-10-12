@@ -159,7 +159,8 @@ def history(title: str, newest: pd.Timestamp, oldest: pd.Timestamp) -> tuple[str
     revs, cont, page_title = [], {}, title
     while True:
         data = _get(API, {"action": "query", "prop": "revisions", "titles": title, "rvprop": "ids|timestamp",
-                          "rvlimit": 500, "rvdir": "older", "rvstart": newest.strftime("%Y-%m-%dT00:00:00Z"),
+                          "rvlimit": 1 if newest == oldest else 500,  # one date: the first revision at or before it
+                          "rvdir": "older", "rvstart": newest.strftime("%Y-%m-%dT00:00:00Z"),
                           "redirects": 1, "format": "json", "formatversion": 2, "maxlag": 5, **cont})
         page = data.get("query", {}).get("pages", [{}])[0]
         page_title = page.get("title", page_title)
