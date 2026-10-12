@@ -12,6 +12,7 @@ dependencies = [
     "scikit-learn>=1.9.1",
     "mlflow>=3.16.1",
     "anthropic>=1.11.0",
+    "mcp==2.2.0",
 ]
 
 [dependency-groups]

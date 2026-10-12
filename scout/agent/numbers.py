@@ -1,7 +1,8 @@
 """Number check: every number in an answer must come from a tool result in the same turn (or the user's question).
 
 A number in the answer is supported if some source number, shown with the same number of decimals, equals it
-(so 38.4 supports "38.4" and "38"), or the same holds for the source × 10^6 ("EUR 60.0m" supports "60,000,000").
+(so 38.4 supports "38.4" and "38"; a whole number may also truncate: 40.8 supports "40"), or the same holds for the
+source × 10^6 ("EUR 60.0m" supports "60,000,000").
 Signs are ignored: "a fall of 38.4%" quotes -38.4.
 """
 import re
@@ -25,7 +26,8 @@ def unsupported(answer: str, sources: list[str]) -> list[str]:
     for n in numbers(LIST_MARKER.sub("", answer)):
         x = float(n.replace(",", ""))
         decimals = len(n.split(".")[1]) if "." in n else 0
-        if not any(round(a, decimals) == x for a in allowed):
+        # whole numbers may also truncate: "40 years old" from an age of 40.8 (evals, 2026-10-09)
+        if not any(round(a, decimals) == x or (decimals == 0 and int(a) == x) for a in allowed):
             out.append(n)
     return out
 
