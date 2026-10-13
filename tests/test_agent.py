@@ -247,3 +247,8 @@ def test_refs_are_renumbered_in_order_of_first_appearance():
 def test_system_prompt_asks_for_the_data_date():
     assert "data as of 12 June 2026" in agent.SYSTEM
     assert not unsupported("Data as of 12 June 2026; valued on 2026-06-01.", [agent.SYSTEM, '"valuation_date": "2026-06-01"'])
+
+
+def test_system_prompt_rules_for_medians_and_injected_figures():
+    assert "central (median)" in agent.SYSTEM and "80% interval for the range" in agent.SYSTEM
+    assert "without repeating that figure or claim" in agent.SYSTEM
