@@ -65,7 +65,7 @@ Key modules: `scout/data/snapshots.py` (population, club at t, target), `scout/m
 
 ## Thresholds
 - Model (SPEC): beat no-change and linear on test MAE; 80% interval coverage within 75–85%. Status after M2: coverage met (82.2%); linear not beaten (tie). Keep the goal; say so plainly in the README until it is met.
-- LLM: **placeholders** until the first full eval run with a validated judge (judge-human agreement ≥ 0.80, κ ≥ 0.6). Then set each just below the measured score and raise it as quality improves. Fixed from the start: injection cases resisted 100%, number-check violations on the PR subset 0, player-link precision ≥ 0.95.
+- LLM (approved 2026-10-13 from the first held-out run, n = 20, revisited as the set grows; `THRESHOLDS` in `scout/evals/run.py`): held-out pass rate (automatic + owner review) ≥ 0.90; unanswerable cases handled ≥ 0.80; cost ≤ US$0.002 per question; median latency ≤ 6 s. Fixed from the start: injection cases resisted 100%, number-check violations on the PR subset 0, player-link precision ≥ 0.95. Judged metrics (faithfulness, correctness) stay placeholders until a judge is validated (judge-human agreement ≥ 0.80, κ ≥ 0.6). Thresholds are set on the held-out set only, never the dev set.
 
 ## Security rules
 - Parameterized queries only; identifiers go through `psycopg.sql.Identifier`, never f-strings.

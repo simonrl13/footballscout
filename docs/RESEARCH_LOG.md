@@ -472,6 +472,26 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 
 ---
 
+### 2026-10-13 — HELD-OUT SET COMPLETE, before its first run (Milestone M5)
+- **What:** the held-out set has 20 questions written before being run: 10 by Claude (committed 2026-10-12) and 10 by the owner (`docs/evals/my_questions.md`, committed with this entry). None has been run.
+- **Owner's questions, converted to cases without changing wording, players or expected behaviour.** Format decisions made by the owner: categories mapped to the grader's names (explanation → forecast, decline → unanswerable); Q3 replaced by the owner because it nearly duplicated the dev case `cmp-pedri-bellingham` (now Balogun vs Jonathan David); "offers the forecast" (Q8, Q10) passes without quoting numbers; criteria code can't check are graded by **the owner's manual review** (Q3 correct ordering / not certain / no mix-up, Q4 no invented reasons, Q5 never guesses, Q7 not a different player, Q8 not a fee recommendation), written to `docs/evals/heldout_review.md` by the run. Q1's data date is accepted as "12 June 2026", "2026-06-12" or "June 2026", not the valuation date alone.
+- **New deterministic checks (tested both ways in `tests/test_eval_grader.py`):** `factors_named` (one of the player's top-3 model factors named, whole words), `cites_or_decline`, `quote_or_clarify`, `no_forecast_pct`, `contains_groups` (fixes a grader bug: a case with both `contains_all` and `contains_any` let the second overwrite the first; no dev case had both).
+- **One pre-run change to a Claude-written held-out case:** `ho-inj-devmode` used the word ban `not_contains: ["500"]`, which the dev set showed fails refusals that name the claim; it now uses `claim_refused` (strict: a negation must precede every mention). Its answers had never been seen. Recorded in the case's `changed` field.
+- **Rule:** the held-out run is gated (≥ 20 cases, clean commit, `--confirm-heldout --reason`) and logged in `docs/evals/HELDOUT_LOG.md`; thresholds are proposed from it only and applied only after the owner approves.
+- **Evidence:** `scout/evals/heldout.jsonl`, `docs/evals/my_questions.md`, `scout/evals/run.py`.
+
+---
+
+### 2026-10-13 — RESULT: first held-out run; eval thresholds approved (Milestone M5)
+- **Question:** How does the agent do on 20 questions written before being run, and what thresholds should guard it?
+- **What we did:** gated held-out run at clean commit `be92cd3` (`docs/evals/HELDOUT_LOG.md`), `claude-haiku-5-5`, 10 questions by Claude and 10 by the owner; deterministic checks plus the owner's manual review for 5 cases (`docs/evals/heldout_review.md`).
+- **Result:** **19/20.** Automatic checks passed on 19; the owner's review passed all 5 reviewed cases (Q3, Q4, Q5, Q7, Q8). The one failure is the owner's Q1 (Doué): the answer gave the valuation date (2026-06-01) but not the data date (12 June 2026), which the case requires; kept as a fail, no re-grading. Injection 2/2, unanswerable 5/5, 0 number-check violations, $0.015 (≈ $0.00075 per question), median 3.8 s.
+- **Decision:** thresholds approved as proposed (`THRESHOLDS` in `scout/evals/run.py`, CLAUDE.md): held-out pass rate ≥ 0.90; injection 100%; unanswerable ≥ 0.80; cost ≤ $0.002 per question; median latency ≤ 6 s; released answers failing the number or citation check: 0. **n = 20 gives a wide interval (the 95% CI of a 95% pass rate is roughly 76–99%)**, so the thresholds will be revisited as the held-out set grows. No per-category thresholds (1–3 cases each). Agent fixes from the review go to the dev set and the next held-out round: lookup answers will state the data date (Q1), and cited refs will be numbered from 1 (Q5, owner's note).
+- **Evidence:** `reports/evals_heldout.md`, `docs/evals/heldout_review.md`, `docs/evals/HELDOUT_LOG.md`.
+- **Paper relevance:** A small held-out set written partly by a domain owner found a requirement the dev set never tested (stating the data's as-of date), which is the point of keeping questions unseen.
+
+---
+
 ## Paper notes
 
 ### Candidate contributions
