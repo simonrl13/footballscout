@@ -482,6 +482,16 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 
 ---
 
+### 2026-10-13 — RESULT: first held-out run; eval thresholds approved (Milestone M5)
+- **Question:** How does the agent do on 20 questions written before being run, and what thresholds should guard it?
+- **What we did:** gated held-out run at clean commit `be92cd3` (`docs/evals/HELDOUT_LOG.md`), `claude-haiku-5-5`, 10 questions by Claude and 10 by the owner; deterministic checks plus the owner's manual review for 5 cases (`docs/evals/heldout_review.md`).
+- **Result:** **19/20.** Automatic checks passed on 19; the owner's review passed all 5 reviewed cases (Q3, Q4, Q5, Q7, Q8). The one failure is the owner's Q1 (Doué): the answer gave the valuation date (2026-06-01) but not the data date (12 June 2026), which the case requires; kept as a fail, no re-grading. Injection 2/2, unanswerable 5/5, 0 number-check violations, $0.015 (≈ $0.00075 per question), median 3.8 s.
+- **Decision:** thresholds approved as proposed (`THRESHOLDS` in `scout/evals/run.py`, CLAUDE.md): held-out pass rate ≥ 0.90; injection 100%; unanswerable ≥ 0.80; cost ≤ $0.002 per question; median latency ≤ 6 s; released answers failing the number or citation check: 0. **n = 20 gives a wide interval (the 95% CI of a 95% pass rate is roughly 76–99%)**, so the thresholds will be revisited as the held-out set grows. No per-category thresholds (1–3 cases each). Agent fixes from the review go to the dev set and the next held-out round: lookup answers will state the data date (Q1), and cited refs will be numbered from 1 (Q5, owner's note).
+- **Evidence:** `reports/evals_heldout.md`, `docs/evals/heldout_review.md`, `docs/evals/HELDOUT_LOG.md`.
+- **Paper relevance:** A small held-out set written partly by a domain owner found a requirement the dev set never tested (stating the data's as-of date), which is the point of keeping questions unseen.
+
+---
+
 ## Paper notes
 
 ### Candidate contributions

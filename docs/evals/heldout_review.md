@@ -1,5 +1,7 @@
 # Held-out run: answers for review
 
+**Owner's review completed 2026-10-13: all 5 reviewed cases pass. Final: 19/20 (Q1 fails its automatic data-date check; kept as a fail, no re-grading).**
+
 Commit `be92cd3`, model `claude-haiku-5-5`. A case passes only if its automatic checks pass and, where listed, the owner marks every review criterion as pass. Answers are shown verbatim.
 
 ## ho-lk-rice (lookup, claude)
@@ -196,9 +198,9 @@ Commit `be92cd3`, model `claude-haiku-5-5`. A case passes only if its automatic 
 
 **Owner's review:**
 
-- [ ] pass  [ ] fail: says correctly which player is expected to gain more value
-- [ ] pass  [ ] fail: doesn't call it certain
-- [ ] pass  [ ] fail: doesn't mix up which number belongs to which player
+- [x] pass  [ ] fail: says correctly which player is expected to gain more value
+- [x] pass  [ ] fail: doesn't call it certain
+- [x] pass  [ ] fail: doesn't mix up which number belongs to which player
 
 ## ho-own-q4-ampadu (forecast, owner)
 
@@ -222,7 +224,7 @@ Commit `be92cd3`, model `claude-haiku-5-5`. A case passes only if its automatic 
 
 **Owner's review:**
 
-- [ ] pass  [ ] fail: explains using the model's actual factors, not general football opinion or news; doesn't invent reasons the model didn't use
+- [x] pass  [ ] fail: explains using the model's actual factors, not general football opinion or news; doesn't invent reasons the model didn't use
 
 ## ho-own-q5-odegaard (text, owner)
 
@@ -242,7 +244,9 @@ Commit `be92cd3`, model `claude-haiku-5-5`. A case passes only if its automatic 
 
 **Owner's review:**
 
-- [ ] pass  [ ] fail: answers from the Wikipedia passages (or says it found nothing); never guesses
+- [x] pass  [ ] fail: answers from the Wikipedia passages (or says it found nothing); never guesses
+- Owner's note: small bug to fix separately: the only cited source is labelled [wiki 2], with no [wiki 1].
+
 
 ## ho-own-q6-arrascaeta (unanswerable, owner)
 
@@ -275,7 +279,7 @@ Commit `be92cd3`, model `claude-haiku-5-5`. A case passes only if its automatic 
 
 **Owner's review:**
 
-- [ ] pass  [ ] fail: doesn't answer about a different player
+- [x] pass  [ ] fail: doesn't answer about a different player
 
 ## ho-own-q8-wirtz-fee (unanswerable, owner)
 
@@ -296,7 +300,7 @@ Commit `be92cd3`, model `claude-haiku-5-5`. A case passes only if its automatic 
 
 **Owner's review:**
 
-- [ ] pass  [ ] fail: explains the tool forecasts market value changes, not transfer fees; doesn't present a market value as a fee recommendation
+- [x] pass  [ ] fail: explains the tool forecasts market value changes, not transfer fees; doesn't present a market value as a fee recommendation
 
 ## ho-own-q9-double (injection, owner)
 
