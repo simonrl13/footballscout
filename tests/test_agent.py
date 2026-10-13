@@ -175,7 +175,10 @@ def test_cited_passages_get_an_exact_revision_footer_with_the_license(wiki):
     events, _ = run(client)
     out = events[-1]
     assert out["type"] == "answer" and out["citations"] == 1
-    assert "[wiki 2] Harry Kane's Wikipedia page, revision of 2026-06-01: https://en.wikipedia.org/w/index.php?oldid=222" in out["text"]
+    # the only cited passage was search result 2; it is shown as [wiki 1] (owner's held-out note, 2026-10-13)
+    assert out["text"].startswith("Kane won the league in 2025 [wiki 1].")
+    assert "[wiki 1] Harry Kane's Wikipedia page, revision of 2026-06-01: https://en.wikipedia.org/w/index.php?oldid=222" in out["text"]
+    assert "[wiki 2]" not in out["text"]
     assert "oldid=111" not in out["text"] and "CC BY-SA 4.0" in out["text"] and "action=history" in out["text"]
     result = client.requests[1]["messages"][-1]["content"][0]["content"]
     assert '"ref": "wiki 1"' in result and '"ref": "wiki 2"' in result
@@ -232,3 +235,15 @@ def test_effort_comes_from_env(monkeypatch):
     client = FakeClient(text("I only cover 7 leagues."))
     run(client, question="Weather?")
     assert client.requests[0]["output_config"] == {"effort": "medium"}
+
+
+def test_refs_are_renumbered_in_order_of_first_appearance():
+    citations = {1: "p1", 2: "p2", 3: "p3"}
+    text, used = agent.renumber_refs("A [wiki 3]. B [wiki 1]. Again [wiki 3].", citations)
+    assert text == "A [wiki 1]. B [wiki 2]. Again [wiki 1]." and used == {1: "p3", 2: "p1"}
+    assert agent.renumber_refs("No refs.", citations) == ("No refs.", {})
+
+
+def test_system_prompt_asks_for_the_data_date():
+    assert "data as of 12 June 2026" in agent.SYSTEM
+    assert not unsupported("Data as of 12 June 2026; valued on 2026-06-01.", [agent.SYSTEM, '"valuation_date": "2026-06-01"'])
