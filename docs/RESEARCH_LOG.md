@@ -462,6 +462,16 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 
 ---
 
+### 2026-10-13 — EXPLORATORY: contract features where a contract end date is known (Milestone M3a)
+- **Label:** exploratory, requested by the owner after the pre-registered result. **Not used for any decision**; B0 stays the baseline as pre-registered, and no further feature search on validation will be run.
+- **Question:** Do the contract features help on the snapshots where they carry information (a contract end date is known)?
+- **What we tried:** the pre-registered pass's folds (CV 2016–2021 + validation 2022), fixed LightGBM settings, ridge alpha and training rows; only the scored rows differ: evaluation snapshots with `contract_known` = 1. No API cost; validation data only. Run at commit `b55e203`.
+- **Result:** n = **5,081** pooled scored snapshots (25–35% of each fold). LightGBM MAE(B0+C) − MAE(B0) = **+0.0006**, paired-bootstrap 95% CI **[−0.0001, +0.0013]** (B0 MAE on the subset 0.3321). Ridge: +0.0001 [−0.0003, +0.0004]. Where the contract information exists, it does not help; if anything LightGBM is very slightly worse.
+- **Evidence:** `reports/m3a_text_pass_exploratory.md`; `scout/ml/text_pass.py --exploratory`.
+- **Paper relevance:** The negative result is not a coverage artefact: even restricted to snapshots with a known contract end date, the feature adds nothing measurable, consistent with Transfermarkt valuations already reflecting publicly known contract situations.
+
+---
+
 ## Paper notes
 
 ### Candidate contributions
