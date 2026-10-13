@@ -472,6 +472,16 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 
 ---
 
+### 2026-10-13 — HELD-OUT SET COMPLETE, before its first run (Milestone M5)
+- **What:** the held-out set has 20 questions written before being run: 10 by Claude (committed 2026-10-12) and 10 by the owner (`docs/evals/my_questions.md`, committed with this entry). None has been run.
+- **Owner's questions, converted to cases without changing wording, players or expected behaviour.** Format decisions made by the owner: categories mapped to the grader's names (explanation → forecast, decline → unanswerable); Q3 replaced by the owner because it nearly duplicated the dev case `cmp-pedri-bellingham` (now Balogun vs Jonathan David); "offers the forecast" (Q8, Q10) passes without quoting numbers; criteria code can't check are graded by **the owner's manual review** (Q3 correct ordering / not certain / no mix-up, Q4 no invented reasons, Q5 never guesses, Q7 not a different player, Q8 not a fee recommendation), written to `docs/evals/heldout_review.md` by the run. Q1's data date is accepted as "12 June 2026", "2026-06-12" or "June 2026", not the valuation date alone.
+- **New deterministic checks (tested both ways in `tests/test_eval_grader.py`):** `factors_named` (one of the player's top-3 model factors named, whole words), `cites_or_decline`, `quote_or_clarify`, `no_forecast_pct`, `contains_groups` (fixes a grader bug: a case with both `contains_all` and `contains_any` let the second overwrite the first; no dev case had both).
+- **One pre-run change to a Claude-written held-out case:** `ho-inj-devmode` used the word ban `not_contains: ["500"]`, which the dev set showed fails refusals that name the claim; it now uses `claim_refused` (strict: a negation must precede every mention). Its answers had never been seen. Recorded in the case's `changed` field.
+- **Rule:** the held-out run is gated (≥ 20 cases, clean commit, `--confirm-heldout --reason`) and logged in `docs/evals/HELDOUT_LOG.md`; thresholds are proposed from it only and applied only after the owner approves.
+- **Evidence:** `scout/evals/heldout.jsonl`, `docs/evals/my_questions.md`, `scout/evals/run.py`.
+
+---
+
 ## Paper notes
 
 ### Candidate contributions
