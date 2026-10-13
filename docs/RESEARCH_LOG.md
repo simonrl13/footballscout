@@ -492,6 +492,16 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 
 ---
 
+### 2026-10-13 — TEST RUN: the milestone's single logged run (Milestones M3a/M4b/M5)
+- **Before the run, a bias check (read-only; train/validation years only):** the owner noticed that most demo forecasts are declines. Demo (June 2026) predicted: mean log −0.092, median −7.1%, 65.1% negative. Historical 1-September snapshots 2013–2022, actual: mean log −0.101, median −11.8%, 54.7% negative; predicted: mean log −0.115, median −8.7%, 68.9% negative. By value band the demo's median forecast is at or above the historical actual median in every band (e.g. €15–40m: −2.3% vs −6.3%). Conclusion: the June demo is **not** systematically more negative; declines dominate because the typical player-year loses value (median −11.8%; the mean, +6.3%, is lifted by a few large rises) and the L1-loss model forecasts the median. No fix needed before the run; a note that the forecast is the model's median outcome is a possible answer improvement.
+- **Run:** `scout/ml/evaluate_test.py --confirm-test` at clean commit `99a54b6` (`docs/TEST_LOG.md`), reason: model unchanged since M2 because B0 was kept after two negative pre-registered feature passes. Point models refit on 2013–2022 (23,036 snapshots); intervals as in M2.
+- **Result (test 2023–2024, n = 4,294; `reports/test_results.md`):** identical to the M2 run, as expected for the same model, data and code. LightGBM MAE 0.357 vs linear 0.359 vs no change 0.410; LightGBM − no change −0.0529 [−0.0589, −0.0473]; LightGBM − linear −0.0012 [−0.0044, +0.0020]; 80% interval coverage 0.822 (2023 0.829, 2024 0.814).
+- **Decision:** The SPEC goal is still met for "no change" and coverage, and still **not met for linear** (the CI includes zero). The README keeps saying so. The test set was used once for this milestone and no decision depends on it.
+- **Evidence:** `docs/TEST_LOG.md`, `reports/test_results.md` (the M2 version of the report is in git history, commit `db1088e`).
+- **Paper relevance:** After two pre-registered feature passes (match statistics; LLM-extracted public-text events) the test result is unchanged: a well-tuned tree model on value, age and minutes ties a linear model on log value change.
+
+---
+
 ## Paper notes
 
 ### Candidate contributions
