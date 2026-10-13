@@ -108,7 +108,7 @@ The valuation's `current_club_id` is point-in-time, despite its name. It changes
 - Synthetic: [tests/test_features.py](tests/test_features.py) adds valuations, transfers, appearances and games dated on or after the snapshot, and the snapshot and every feature must stay identical.
 - Real data: [tests/test_leakage_real.py](tests/test_leakage_real.py) rebuilds 2014, 2020 and 2023 with every table truncated at 1 September, and the results must match the full build.
 
-## Results (M2, current)
+## Results (M2; the model is unchanged since)
 **Settings** come from a validation-only tuning pass ([reports/m2_tuning.md](reports/m2_tuning.md)): 54 LightGBM configs and 5 ridge penalties, scored by rolling-origin CV (fit on 2013..y−1, score y, 2016–2021).
 - Chosen LightGBM: L1 loss, 7 leaves, 600 trees. Chosen ridge: alpha 100, though the penalty barely matters.
 - Tuning changed little: on 2022 both LightGBM versions score MAE 0.364.
@@ -144,6 +144,25 @@ The valuation's `current_club_id` is point-in-time, despite its name. It changes
 The test coverage is inside the SPEC's 75–85% band. By segment it runs from 78.6% (ages 22–24) to 90.0% (over-31s, who are over-covered). `explain()` returns the interval with each prediction.
 
 **M1 (history).** The untuned M1 model tied linear on test too: 0.3586 vs 0.3588 ([docs/TEST_LOG.md](docs/TEST_LOG.md)). M1 reports: [reports/m1_results.md](reports/m1_results.md), [reports/m1_data.md](reports/m1_data.md).
+
+## Feature experiments after M2 (validation only, pre-registered)
+Two pre-registered feature passes, each evaluated on validation only with the same protocol: rolling-origin CV fitting 2013..y−1 and scoring y (2016–2021) plus validation 2022, n = 16,458 pooled snapshots, fixed LightGBM settings, paired-bootstrap 95% CI of MAE(set) − MAE(B0). The test set was not used. **Both are negative: B0 (the 12 M1 features) stays the baseline.**
+
+| Pass | Sets | Best difference vs B0 (95% CI) | Report |
+|---|---|---|---|
+| Stats (2026-10-01): position percentiles, availability, discipline, in-match injury records | P, A, D, I, ALL | P −0.0002 [−0.0006, +0.0002]; injury records and ALL are significantly worse | [reports/m3_stats_pass.md](reports/m3_stats_pass.md) |
+| Wikipedia text (2026-10-12): contract (end date, years left, extensions, expiries) and moves (transfers, loans) extracted by an LLM from point-in-time Wikipedia revisions | B0+C, B0+C+M | B0+C+M −0.0001 [−0.0004, +0.0002]; B0+C −0.0000 [−0.0004, +0.0003] | [reports/m3a_text_pass.md](reports/m3a_text_pass.md) |
+
+An exploratory check, run after the result and not used for any decision: scored only on the 5,081 snapshots where a contract end date is known, contract features change LightGBM's MAE by +0.0006 [−0.0001, +0.0013] ([reports/m3a_text_pass_exploratory.md](reports/m3a_text_pass_exploratory.md)).
+
+**The Wikipedia extraction** ([reports/m3a_extraction.md](reports/m3a_extraction.md)): one document per labelled snapshot player-year (the text added to the player's page during the year before the snapshot), 24,260 documents, `claude-haiku-5-5` on the Batch API, **US$2.77**. Every event needs a verbatim quote and a day- or month-precise date inside the 12-month window, with its year written near the quote; contract end dates need their year in the quote itself.
+- **Quality, against Transfermarkt's transfer table** (second pilot): extracted transfers/loans matched a recorded move within 31 days in **19 of 19** cases (95% CI 83–100%); **21 of 32 (66%)** recorded senior moves were extracted (recall is bounded by design).
+- **Injuries are sparse:** 0.02–0.06 verified injuries per player-year in the pilots, 3–4% of snapshots in the full run, so they were reported but never used as a feature.
+- **Contract end date known** (share of labelled snapshots):
+
+  | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 |
+  |---|---|---|---|---|---|---|---|---|---|
+  | 13.7% | 18.6% | 22.6% | 25.3% | 28.4% | 30.4% | 31.2% | 31.7% | 33.5% | 35.3% |
 
 ## Test-set discipline
 The test set is evaluated at most once per milestone, only by `scout/ml/evaluate_test.py`, and every run is logged with date, commit and reason. **Disclosure:** in the earlier v0 design (Phase 2), the v0 test metrics were printed on every training run and viewed 4 times. No feature, hyperparameter or model decision was based on them; the only change made after viewing was switching the age-only baseline from median to mean, because of a metric artifact visible in validation too. v0 was then replaced by the SPEC design, with new splits.
