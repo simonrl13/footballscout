@@ -6,3 +6,4 @@ Every evaluation of the test set (2023–2024 snapshots) is appended here by `sc
 |---|---|---|---|---|---|---|---|---|
 | 2026-09-30 13:52 UTC | `3a8c31e` | M1 final: SPEC pipeline, no-change/age-only/ridge/LightGBM | 4,294 | 0.3586 | 0.3588 | 0.4103 | 0.704 | n/a |
 | 2026-09-30 19:41 UTC | `04008c3` | M2 final: tuned LightGBM/ridge (validation CV), split-conformal 80% intervals | 4,294 | 0.3574 | 0.3586 | 0.4103 | 0.704 | 0.822 |
+| 2026-10-13 21:38 UTC | `99a54b6` | M3a/M4b/M5 milestone: single logged run; model unchanged since M2 (B0 kept after two negative pre-registered feature passes) | 4,294 | 0.3574 | 0.3586 | 0.4103 | 0.704 | 0.822 |
