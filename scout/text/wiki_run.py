@@ -107,21 +107,52 @@ def _one_batch(conn, client, docs: list[dict], model: str, sleep, stats: dict) -
                      "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
                      (d["doc_id"], xw.PROMPT_VERSION, model, status, getattr(usage, "input_tokens", None),
                       getattr(usage, "output_tokens", None), batch.id, Jsonb(out) if out is not None else None))
-        for k in kept:
-            conn.execute("INSERT INTO text_signals (doc_id, prompt_version, player_id, signal_type, detail, evidence_start, evidence_end, "
-                         "event_date, date_precision, attributes) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
-                         (d["doc_id"], xw.PROMPT_VERSION, d["player_id"], k["signal_type"], k["signal_type"], k["evidence_start"],
-                          k["evidence_end"], k["event_date"], k["precision"],
-                          Jsonb({"injury_type": k["injury_type"], "duration_days": k["duration_days"]})))
-            stats["kept_by_type"][k["signal_type"]] = stats["kept_by_type"].get(k["signal_type"], 0) + 1
-        for k in statements:  # contract end dates: any window; known from the document's publication on
-            conn.execute("INSERT INTO text_signals (doc_id, prompt_version, player_id, signal_type, detail, evidence_start, evidence_end, "
-                         "event_date, date_precision, attributes) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
-                         (d["doc_id"], xw.PROMPT_VERSION, d["player_id"], k["signal_type"], k["source_type"], k["evidence_start"],
-                          k["evidence_end"], k["event_date"], k["precision"], Jsonb({})))
+        _store_signals(conn, d, kept, statements, stats)
         stats["kept"] += len(kept)
         stats["contract_statements"] += len(statements)
     conn.commit()
+
+
+def _store_signals(conn, d: dict, kept: list[dict], statements: list[dict], stats: dict) -> None:
+    for k in kept:
+        conn.execute("INSERT INTO text_signals (doc_id, prompt_version, player_id, signal_type, detail, evidence_start, evidence_end, "
+                     "event_date, date_precision, attributes) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                     (d["doc_id"], xw.PROMPT_VERSION, d["player_id"], k["signal_type"], k["signal_type"], k["evidence_start"],
+                      k["evidence_end"], k["event_date"], k["precision"],
+                      Jsonb({"injury_type": k["injury_type"], "duration_days": k["duration_days"]})))
+        stats["kept_by_type"][k["signal_type"]] = stats["kept_by_type"].get(k["signal_type"], 0) + 1
+    for k in statements:  # contract end dates: any window; known from the document's publication on
+        conn.execute("INSERT INTO text_signals (doc_id, prompt_version, player_id, signal_type, detail, evidence_start, evidence_end, "
+                     "event_date, date_precision, attributes) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                     (d["doc_id"], xw.PROMPT_VERSION, d["player_id"], k["signal_type"], k["source_type"], k["evidence_start"],
+                      k["evidence_end"], k["event_date"], k["precision"], Jsonb({})))
+
+
+def reverify(conn, docs: list[dict]) -> dict:
+    """Re-apply the current verification rules to the stored model outputs (no API calls): the documents' signals for
+    this prompt version are deleted and rebuilt. Returns the same stats as run_batch."""
+    by_id = {d["doc_id"]: d for d in docs}
+    rows = conn.execute("SELECT doc_id, input_tokens, output_tokens, output, batch_id FROM text_extractions "
+                        "WHERE prompt_version = %s AND doc_id = ANY(%s) AND output IS NOT NULL",
+                        (xw.PROMPT_VERSION, list(by_id))).fetchall()
+    stats = {"submitted": len(rows), "succeeded": len(rows), "input_tokens": 0, "output_tokens": 0, "raw_events": 0, "kept": 0,
+             "dropped": {}, "kept_by_type": {}, "contract_statements": 0}
+    conn.execute("DELETE FROM text_signals WHERE prompt_version = %s AND doc_id = ANY(%s)", (xw.PROMPT_VERSION, list(by_id)))
+    for doc_id, tin, tout, out, _ in rows:
+        d = by_id[doc_id]
+        kept, dropped = xw.verify_events(d["text"], out, *d["window"], body=d["body"])
+        statements = xw.contract_statements(d["text"], out)
+        _store_signals(conn, d, kept, statements, stats)
+        for k, v in dropped.items():
+            stats["dropped"][k] = stats["dropped"].get(k, 0) + v
+        stats["raw_events"] += len(out.get("events", []))
+        stats["input_tokens"] += tin or 0
+        stats["output_tokens"] += tout or 0
+        stats["kept"] += len(kept)
+        stats["contract_statements"] += len(statements)
+    conn.commit()
+    stats["batch_id"] = ", ".join(sorted({r[4] for r in rows}))
+    return stats
 
 
 def main() -> None:
@@ -130,10 +161,11 @@ def main() -> None:
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--pilot", type=int)
     g.add_argument("--all", action="store_true")
+    g.add_argument("--reverify", action="store_true", help="re-check stored outputs with the current rules (no API calls)")
     ap.add_argument("--confirm-cost", type=float, default=None, help="max USD for --all (from the pilot estimate)")
     ap.add_argument("--report", default=REPORT.name, help="report file name in reports/")
     args = ap.parse_args()
-    if not extract.enabled():
+    if not args.reverify and not extract.enabled():
         raise SystemExit("TEXT_LLM_ENABLED is not true")
     model = extract.model_name()
     with store.connect() as conn:
@@ -152,11 +184,11 @@ def main() -> None:
             mapped = {r[0] for r in conn.execute("SELECT player_id FROM wikidata_players WHERE enwiki_title IS NOT NULL")}
             n_full = round(labelled.player_id.isin(mapped).sum() * len(docs) / len(built))  # all labelled player-years × non-empty share
             docs = docs[:args.pilot]
-        else:
+        elif args.all:
             est = estimate_full(conn, len(docs), model)
             if args.confirm_cost is None or est > args.confirm_cost:
                 raise SystemExit(f"full run estimate ${est:.2f} for {len(docs):,} docs; pass --confirm-cost >= estimate after approval")
-        stats = run_batch(conn, anthropic.Anthropic(), docs, model)
+        stats = reverify(conn, docs) if args.reverify else run_batch(conn, anthropic.Anthropic(), docs, model)
         write_report(conn, stats, docs, model, n_full, pilot=bool(args.pilot), path=ROOT / "reports" / args.report)
         print({k: v for k, v in stats.items() if k != "dropped"}, stats.get("dropped"))
 

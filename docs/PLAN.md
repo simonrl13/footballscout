@@ -231,7 +231,8 @@ Effort: S = up to 3 h, M = 3–8 h, L = more than 8 h.
   - [x] Second pilot (2026-10-12, Haiku 5.5, $0.0111): injuries 0.02, contracts 0.11, moves 0.33 per player-year; move precision 19/19, recall 21/32 (`reports/m3a_pilot2.md`)
   - [x] Sentence splitter keeps numbered club names ("1. FSV Mainz 05")
   - [x] `extract-v3`: contract end dates (`contract_until`); features C (contract) and M (moves) with leakage tests; pre-registered 2026-10-12
-  - [ ] Full extraction run: about **$2.65** on Haiku 5.5 (second pilot). **Needs your OK.**
+  - [x] Full extraction run (2026-10-12): 24,260 documents, **$2.766**, Haiku 5.5 (`reports/m3a_extraction.md`)
+  - [x] Pre-registered text-feature pass on validation: **negative**, B0 stays (`reports/m3a_text_pass.md`)
   - [ ] Features + leakage tests; 100-signal precision labels (your ~1.5 h); ablation on validation
 - **M3b GDELT (stretch):**
   - [ ] GCP/BigQuery account (**needs your OK**), dry run

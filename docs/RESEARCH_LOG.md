@@ -443,6 +443,25 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 
 ---
 
+### 2026-10-12 — RESULT: Wikipedia text features, a negative result (Milestone M3a)
+- **Question:** As pre-registered (entry above, merged in `096dee6` before the extraction and the evaluation): do contract (C) or contract + move (C+M) features from point-in-time Wikipedia text improve on B0?
+- **Extraction:** `extract-v3` on `claude-haiku-5-5`, Batch API, 24,260 documents (one per labelled snapshot player-year with new text), 6 batches; all succeeded (no refusals, no truncation). Real cost **$2.766** (36,896,915 input / 3,683,221 output tokens), under the $4 stop; projected after each batch ($3.37 → $3.10 → $2.96) before continuing. Kept after verification: 3,855 transfers, 2,399 contract extensions, 2,060 loans, 1,025 injuries, 414 contract expiries, and **4,230 contract end dates for 2,182 players** (`reports/m3a_extraction.md`).
+- **A bug found and fixed before the evaluation:** `parse_date("")` returned NaT instead of None, so events with no `contract_until` produced a "statement" whenever the quote contained the letters "nan" (Fernandinho, Ternana, financial): 147 bogus rows with an out-of-range date. Fixed with a regression test; all v3 signals were then rebuilt offline from the stored model outputs (`wiki_run --reverify`, no API calls). The bug never reached the evaluation.
+- **Result (LightGBM, pooled CV folds 2016–2021 + validation 2022, n = 16,458; `reports/m3a_text_pass.md`):**
+
+  | Set | Mean CV MAE | Validation MAE 2022 | MAE(set) − MAE(B0) | 95% CI | Helps |
+  |---|---|---|---|---|---|
+  | B0 | 0.3573 | 0.3644 | — | — | — |
+  | B0+C | 0.3572 | 0.3645 | −0.0000 | [−0.0004, +0.0003] | no |
+  | B0+C+M | 0.3573 | 0.3632 | −0.0001 | [−0.0004, +0.0002] | no |
+
+  Ridge shows the same picture (mean CV MAE 0.3628 / 0.3626 / 0.3626). Coverage (`contract_known`) rises from 13.7% of 2013 snapshots to 35.3% of 2022; injuries, reported only, appear in 3–4% of snapshots.
+- **Decision:** By the pre-registered rule, **B0 stays the baseline**. No test data was used; the test set stays sealed until the milestone's single logged run.
+- **Evidence:** `reports/m3a_text_pass.md`, `reports/m3a_extraction.md`; `scout/ml/text_pass.py`, `scout/text/wiki_features.py`, `scout/text/wiki_run.py`; MLflow run "text-feature-pass".
+- **Paper relevance:** A second, independent negative result. Verified, point-in-time contract and move events from Wikipedia add nothing measurable beyond value, age, minutes and the structured transfer history. Likely reasons: low coverage (contract end dates known for at most a third of snapshots), the most valuable category (injuries) being the sparsest, and Transfermarkt valuers probably already pricing in the same public news. The method (pre-registration, verbatim-quote and year checks, point-in-time documents, leakage tests) is a contribution even though the features don't help.
+
+---
+
 ## Paper notes
 
 ### Candidate contributions

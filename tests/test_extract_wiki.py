@@ -125,3 +125,14 @@ def test_contract_statements_need_the_end_year_in_the_quote_but_not_a_window():
     st = contract_statements(text, out)
     assert [(s["event_date"].isoformat(), s["precision"], s["source_type"]) for s in st] == [("2017-06-01", "month", "contract_extension")]
     assert text[st[0]["evidence_start"]:st[0]["evidence_end"]].endswith("until June 2017")
+
+
+def test_empty_or_null_dates_are_not_dates():
+    from scout.text.extract_wiki import contract_statements, parse_date
+    assert parse_date("") is None and parse_date(None) is None and parse_date("nan") is None and parse_date("soon") is None
+    text = "On 6 June 2013, Fernandinho became Manchester City's first signing of the summer."
+    out = {"events": [{"type": "transfer", "date": "2013-06-06", "contract_until": None,
+                       "evidence": "On 6 June 2013, Fernandinho became Manchester City's first signing"}]}
+    assert contract_statements(text, out) == []  # the regression: "nan" in "Fernandinho" passed the year check
+    kept, dropped = verify_events(text, {"events": [dict(out["events"][0], date="")]}, W0, W1)
+    assert kept == [] and dropped["bad_date"] == 1
