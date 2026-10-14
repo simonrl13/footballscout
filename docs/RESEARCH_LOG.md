@@ -510,6 +510,15 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 
 ---
 
+### 2026-10-14 — DECISION: deploy plan (M7): local demo + Cloud Run/Neon, open access with per-IP limits
+- **Question:** How should the demo be deployed on a tight budget?
+- **Options compared:** AWS Lightsail ($5–12/month), Cloud Run + Neon ($0 at demo volume), Render + Neon ($0, slow wake-up), Oracle Always Free ($0, allowance cut in 2026), Fly.io + Neon (~$2–5), and a local demo + recorded walkthrough.
+- **Decision (owner):** F (local demo + recorded walkthrough) plus B (Cloud Run for the API, Neon for Postgres); MCP stays local (stdio). Open access without tokens, with per-IP limits on `/ask` and the global daily cap lowered from $2 to $0.50; workspace limit $10/month; GCP budget alert $1. Nothing is public until the rate limits, a demo-only database, OIDC deploys without stored keys, Secret Manager and an updated SECURITY.md are in place.
+- **Done now (no accounts):** demo-only data export/import (4.3 MB; 2,649 players, 37,375 passages; import tested on a fresh Postgres), the one-command local setup, the walkthrough script, and the owner's ordered account-setup list (`docs/deploy/SETUP.md`).
+- **Evidence:** `docs/PLAN.md` (M7), `scout/demo_data.py`, `scout/local_demo.py`, `docs/DEMO.md`, `docs/deploy/`.
+
+---
+
 ## Paper notes
 
 ### Candidate contributions

@@ -23,6 +23,9 @@ Forecasts how a player's Transfermarkt market value will change over the next 12
 - **Target:** `log(value as of next 1 Sep / value as of 1 Sep)`, each the latest valuation on or before that date. Kept only if the player was revalued in between, so a zero means "revalued, unchanged".
 - **Split:** train 2013–2021 · validation 2022 · test 2023–2024. Never random.
 
+## Quick demo
+One command after cloning (needs Docker and uv): `uv run python -m scout.local_demo`. See [docs/DEMO.md](docs/DEMO.md) for the demo data, what to try, and the walkthrough.
+
 ## Setup
 Requires [uv](https://docs.astral.sh/uv/) and Docker Desktop. The Kaggle CSVs ([davidcariboo/player-scores](https://www.kaggle.com/datasets/davidcariboo/player-scores), CC0) go in `data/raw/`. They must match [data/manifest.json](data/manifest.json) (SHA-256), which is checked at load time.
 
