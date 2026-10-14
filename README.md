@@ -77,7 +77,7 @@ A Claude tool-calling agent over five read-only tools, also exposed as REST endp
 - **Guardrails:** Pydantic models with limits (unknown fields rejected) for every tool and endpoint; parameterized SQL with `psycopg.sql` identifiers; read-only role and read-only transactions; max 6 model calls and 4,096 output tokens per call (thinking included); **US$2/day spend cap** across all agent calls, checked before each call.
 - **Observability:** one `agent_calls` row per model call (tokens, cost, latency, requested tools, cache hits). `python -m scout.agent.dashboard` shows cost per day and per conversation, prompt-cache hit rate, p50/p95 latency and violations (views in `db/agent.sql`). `AGENT_CACHE=true` serves identical requests from `agent_cache` (development and evals).
 - **Prompt caching:** automatic caching on every request (tools, system prompt, history). On Haiku 5.5 the dev eval run read 158,833 tokens from the cache against 262 uncached input tokens.
-- **Model:** `AGENT_MODEL` / `AGENT_EFFORT` from `.env`: `claude-haiku-5-5` at effort `medium` since 2026-10-12 (about 8x cheaper per question than Haiku 4.5 with the same dev-set result; see the research log).
+- **Model:** `AGENT_MODEL` / `AGENT_EFFORT` from `.env`: `claude-haiku-5-5` at effort `medium` since 2026-10-12 (about 6.5x cheaper per question than Haiku 4.5 with the same dev-set result; see the research log).
 - **Not yet:** rate limits (M6), an LLM judge, the held-out eval run.
 
 ## Evals and MCP (M5a)
