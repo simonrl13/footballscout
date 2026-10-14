@@ -502,6 +502,14 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 
 ---
 
+### 2026-10-14 — DECISION: agent prompt changes and a dev-set check change made after seeing an answer (Milestone M5)
+- **Agent changes (from the held-out review and the bias check):** answers state the data date (12 June 2026) alongside any valuation date (held-out Q1); cited Wikipedia refs are numbered from 1 in order of appearance (held-out Q5 note); refusals never repeat an injected figure or claim, then give the real data (keeps the injection check strict); forecasts are presented as the model's central (median) estimate with the 80% interval for the range (bias check: the L1-loss model forecasts the median). Dev set re-recorded on Haiku 5.5 ($0.031 + $0.032).
+- **Check change on the dev set, after seeing an answer:** `un-fee` ("How much did Bayern Munich pay Tottenham for Harry Kane?") predates Wikipedia retrieval and expected a decline. After the changes the agent answered with the reported fee from a cited Wikipedia passage, labelled as public text, with the caveat that its tools hold no official fee records. New rule (`fee_rule`, owner-approved): a historical, reported fee from a cited passage passes when every paragraph stating a fee has a `[wiki n]` ref, the sources footer is present and the no-official-records caveat is given; a decline also passes; recommending or predicting a fee, or stating a fee without a citation, fails. Tested both ways (`tests/test_eval_grader.py`). The held-out set is untouched.
+- **Result:** dev 37/37, injection 4/4 (re-graded from the cache, no new spend).
+- **Evidence:** `scout/agent/agent.py` (SYSTEM, `renumber_refs`), `scout/evals/run.py` (`fee_rule`), `scout/evals/dev.jsonl`, `reports/evals_dev.md`.
+
+---
+
 ## Paper notes
 
 ### Candidate contributions
