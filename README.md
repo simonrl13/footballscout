@@ -13,7 +13,7 @@ Forecasts how a player's Transfermarkt market value will change over the next 12
 - [x] **M4a** — tools API + Claude agent (no text yet): 4 read-only tools, number check with retry/block, US$2/day spend cap, per-call traces. See [Agent](#agent-m4a-m4b).
 - [x] **M5a** — MCP server (stdio, same 4 read-only tools) + 30-question text-free eval set with deterministic checks; CI replays a 13-case recorded subset without an API key. See [Evals and MCP (M5a)](#evals-and-mcp-m5a).
 - [x] **M4b (text, no extraction)** — `search_text` over the demo players' Wikipedia pages (Postgres full-text search), every answer citing the exact revision with the CC BY-SA notice; agent on Claude Haiku 5.5; tracing dashboard and prompt caching (M6 pieces). See [Agent](#agent-m4a-m4b).
-- [ ] Owner's held-out questions + first held-out run · LLM judge · Wikipedia extraction (after the second pilot and a top-up) · rate limits (M6) · M7 — AWS deploy
+- [ ] Owner's held-out questions + first held-out run · LLM judge · rate limits (M6) · M7 — AWS deploy
 
 ## Problem (from the SPEC)
 - **Unit:** one player on **1 September** each year, 2013–2024.
