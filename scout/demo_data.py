@@ -37,12 +37,21 @@ TABLES = {
                        "doc_id IN (SELECT DISTINCT doc_id FROM text_passages)"),
     "text_passages": (["doc_id", "passage_no", "player_id", "section", "body"], "TRUE"),
 }
-NOTICE = """Scout demo data.
-- demo_players: derived from the Transfermarkt data in the Kaggle dataset davidcariboo/player-scores (CC0) and the
-  Scout model's output.
-- text_passages: text from English Wikipedia, licensed CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).
-  Each passage's exact source revision is text_documents.url (index.php?oldid=...); authors are listed in each page's
-  history. Passages are split into paragraphs; no other changes.
+NOTICE = """Scout demo data: licenses and attribution
+
+1. Transfermarkt-derived data (demo_players, wikidata_players): built from the Kaggle dataset "Football Data from
+   Transfermarkt" (davidcariboo/player-scores), released under CC0 1.0 Universal (public domain dedication,
+   https://creativecommons.org/publicdomain/zero/1.0/). Wikidata identifiers in wikidata_players are also CC0.
+   The forecasts, intervals and factors in demo_players are output of the Scout model (https://github.com/simonrl13/footballscout).
+
+2. Wikipedia text (text_passages): excerpts of English Wikipedia articles, licensed under the Creative Commons
+   Attribution-ShareAlike 4.0 International License (CC BY-SA 4.0, https://creativecommons.org/licenses/by-sa/4.0/).
+   - Attribution: each passage's article title is text_documents.meta->>'title' and its exact source revision is
+     text_documents.url (https://en.wikipedia.org/w/index.php?oldid=...); the authors are the contributors listed in
+     each article's history (https://en.wikipedia.org/w/index.php?title=<title>&action=history).
+   - Changes: wiki markup removed (templates, tables, references, links rendered as their text) and the text split into
+     paragraph passages of at most 1,200 characters. No other changes.
+   - ShareAlike: text_passages.csv, as an adaptation, is distributed under CC BY-SA 4.0. No warranties are given.
 """
 
 

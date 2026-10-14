@@ -8,11 +8,10 @@ What Claude needs back, all **non-secret identifiers**: the Neon region, the GCP
 region, and the Workload Identity provider's resource name (step B7). Claude stores them as GitHub repository
 *variables* (not secrets) and writes the deploy workflow.
 
-Suggested regions (pick one pair): GCP `us-central1` with Neon `AWS US East 2 (Ohio)`, or GCP `europe-west1` with
-Neon `AWS Europe Central 1 (Frankfurt)`.
+Regions (decided 2026-10-14): GCP **`europe-west1`** (Belgium) with Neon **AWS Europe Central 1 (Frankfurt)**: the audience is mostly European, and the data stays in the EU.
 
 ## A. Neon (Postgres for the demo data, ~50 MB of the 0.5–1 GB free storage)
-1. Sign up at neon.com; create a project `scout-demo`, Postgres 16, in the region you picked.
+1. Sign up at neon.com; create a project `scout-demo`, Postgres 16, region **AWS Europe Central 1 (Frankfurt)**.
 2. Open the SQL Editor on database `neondb` and run [neon_roles.sql](neon_roles.sql) after replacing its three
    password placeholders with passwords you generate locally.
 3. From the Neon dashboard ("Connect"), build the three connection strings yourself, one per role, each ending in
@@ -30,7 +29,7 @@ Neon `AWS Europe Central 1 (Frankfurt)`.
 3. Open Cloud Shell and set your values (not secrets):
    ```sh
    PROJECT_ID=your-project-id
-   REGION=us-central1
+   REGION=europe-west1
    PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
    gcloud config set project $PROJECT_ID
    gcloud services enable run.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com \

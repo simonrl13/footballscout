@@ -106,6 +106,26 @@ Please don't open a public issue. Use GitHub's private vulnerability reporting o
   - `mcp==2.2.0`: official SDK (Model Context Protocol, LF Projects), first release 2024-11, ~235M downloads/month; pinned to a release older than two weeks (2.3.0 was 7 days old); pip-audit clean.
 - M5 adds the planted-injection Wikipedia revision and agent-level read-only tests.
 
+## Public demo (M7, approved 2026-10-14; not deployed yet)
+Planned public surface: the API on Google Cloud Run (`europe-west1`) with the demo-only database on Neon (Frankfurt),
+open access without tokens. MCP stays local (stdio). Approved abuse limits, all enforced in code before anything is
+public:
+
+| Endpoint | Per client IP | Global |
+|---|---|---|
+| `POST /ask` (calls Claude) | 5 per minute, 20 per day | US$0.50/day spend cap |
+| Tool endpoints (no LLM) | 60 per minute | Cloud Run at most 2 instances |
+
+- Over a limit: HTTP 429 with `Retry-After`.
+- Client IPs are stored only as keyed hashes (HMAC-SHA256 with a pepper from GCP Secret Manager) and deleted after
+  48 hours; raw IPs are never logged.
+- Secrets (Anthropic key, database URLs, pepper) live in GCP Secret Manager, readable only by the runtime service
+  account; GitHub Actions deploys through OIDC / Workload Identity Federation limited to this repository's `main`
+  branch, so no key is stored in GitHub.
+- The API connects only as `scout_reader` (data) and `scout_tracer` (traces, rate-limit log); the demo database holds
+  no raw data and no full Wikipedia revisions.
+- Budget guards: Anthropic workspace limit $10/month, GCP budget alert at $1.
+
 ## Known limitations
 - Text documents are written with the loader role. The API and agent will only read them (`scout_reader`).
 - `.claude/settings.json` guards the coding assistant, not the machine: shell commands outside its deny list could still read `.env`. Tools that load `.env` (e.g. `uv --env-file`) may echo malformed lines in warnings (see the incident log).

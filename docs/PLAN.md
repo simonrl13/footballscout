@@ -281,10 +281,13 @@ limit **$10/month** (owner, Anthropic Console), GCP budget alert at **$1** (owne
 - [ ] Publish `scout_demo.tar.gz` as a GitHub release asset (CC0 + CC BY-SA notice inside)
 
 **B: Cloud Run (API) + Neon (Postgres)**; MCP stays local (stdio)
+- Regions: GCP `europe-west1` + Neon Frankfurt (EU data location; mostly European audience).
 - Architecture: one Cloud Run service from the existing Dockerfile (min 0, **max 2** instances, 512 MiB, concurrency
   20, 120 s timeout, `--allow-unauthenticated`), runtime service account with Secret Manager access only; Neon
   `scout-demo` with the demo data, the API on `scout_reader` (data) and `scout_tracer` (traces, rate limits).
 - Access: **open, no tokens** (`PUBLIC_DEMO=true`), with per-IP limits (proposed):
+
+  Approved 2026-10-14:
 
   | Endpoint | Per IP | Global |
   |---|---|---|
