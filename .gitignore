@@ -10,3 +10,4 @@ node_modules/
 .next/
 mlartifacts/
 mlruns/
+data/demo/

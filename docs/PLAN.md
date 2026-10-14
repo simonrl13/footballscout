@@ -267,10 +267,48 @@ Effort: S = up to 3 h, M = 3–8 h, L = more than 8 h.
 - [ ] README: architecture diagram, results table (baselines, news ablation, evals, coverage, security), "what didn't work" (v0 first), data caveats
 - [ ] SECURITY.md complete with OWASP mapping and test evidence
 
-### M7: deploy (Nov 16–22)
-- [ ] AWS Lightsail or small EC2, `docker compose`, TLS reverse proxy, secrets from env; ≤ US$15/month (budget alarm)
-- [ ] Production smoke evals against the deployed URL; spend cap verified live
-- [ ] Final README pass with the live URL; buffer for M1–M6 slippage
+### M7: deploy (approved 2026-10-14: F + B; replaces the AWS Lightsail plan)
+**Budget:** US$0 hosting at demo volume. Claude spend: global cap **US$0.50/day in code** (was $2), "scout" workspace
+limit **$10/month** (owner, Anthropic Console), GCP budget alert at **$1** (owner). About $0.0008 per question on
+`claude-haiku-5-5`, so the daily cap allows roughly 600 questions.
+
+**F: local demo + recorded walkthrough** (no accounts)
+- [x] Demo-only data export/import (`scout/demo_data.py`): 2,649 players, 37,375 Wikipedia passages, 2,616 cited
+  revisions (metadata only), 4.3 MB compressed, SHA-256 manifest and license notice; import tested on a fresh Postgres
+- [x] One command (`python -m scout.local_demo`): `.env` from the example with random secrets if missing, Postgres,
+  demo data, API on 127.0.0.1:8000
+- [x] Walkthrough script (`docs/DEMO.md`, ~5 min); the owner records the video
+- [ ] Publish `scout_demo.tar.gz` as a GitHub release asset (CC0 + CC BY-SA notice inside)
+
+**B: Cloud Run (API) + Neon (Postgres)**; MCP stays local (stdio)
+- Architecture: one Cloud Run service from the existing Dockerfile (min 0, **max 2** instances, 512 MiB, concurrency
+  20, 120 s timeout, `--allow-unauthenticated`), runtime service account with Secret Manager access only; Neon
+  `scout-demo` with the demo data, the API on `scout_reader` (data) and `scout_tracer` (traces, rate limits).
+- Access: **open, no tokens** (`PUBLIC_DEMO=true`), with per-IP limits (proposed):
+
+  | Endpoint | Per IP | Global |
+  |---|---|---|
+  | `POST /ask` (calls Claude) | 5 per minute, 20 per day | US$0.50/day spend cap (existing check) |
+  | Tool endpoints (no LLM) | 60 per minute | Cloud Run max 2 instances |
+  | `/health` | none | — |
+
+  Counted in Postgres (`agent_requests`, written by `scout_tracer`): the client IP stored only as
+  HMAC-SHA256(IP, pepper from Secret Manager), rows purged after 48 h. The client IP is taken from the
+  `X-Forwarded-For` entry Google's front end adds, not a client-supplied one (to verify against Cloud Run docs).
+  Over the limit: HTTP 429 with `Retry-After`.
+- **Before anything is public** (all must be done and merged):
+  - [ ] per-IP rate limits + public mode, with tests (limits, 429s, spoofed `X-Forwarded-For`, pepper never logged)
+  - [ ] global daily cap lowered to US$0.50
+  - [ ] demo-only database loaded into Neon through the loader role; the API connects only as `scout_reader` and
+    `scout_tracer`
+  - [ ] GitHub Actions deploy via OIDC / Workload Identity Federation (no stored keys), only from `main` after the
+    required checks; new Actions (`google-github-actions/auth`, `deploy-cloudrun`) need approval and SHA pinning
+  - [ ] Anthropic key, database URLs and the pepper in GCP Secret Manager
+  - [ ] SECURITY.md: public surface, abuse limits, what data reaches the model, secrets and deploy identity
+- [ ] Owner's account setup in order: [docs/deploy/SETUP.md](deploy/SETUP.md) (Neon, then GCP, then the Anthropic
+  limit); Claude needs back only non-secret identifiers (Neon region, GCP project ID/number/region, WIF provider name)
+- [ ] First deploy, smoke test against the public URL (health, tools, one `/ask`, a 429), README with the live link
+- [ ] Production smoke evals: the CI subset against the deployed URL (cached where possible)
 
 ---
 
