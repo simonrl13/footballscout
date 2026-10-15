@@ -149,8 +149,10 @@ def _blocks(content: list[dict]) -> list[dict]:
     return [{k: b[k] for k in keep[b["type"]]} for b in content if b["type"] in keep]
 
 
-def run(question: str, client, tracer, db, model: str | None = None, use_cache: bool | None = None) -> Iterator[dict]:
-    """Answer one question. Yields events: tool_call, tool_error, then exactly one of answer | refused | blocked."""
+def run(question: str, client, tracer, db, model: str | None = None, use_cache: bool | None = None,
+        tools_off: frozenset = frozenset()) -> Iterator[dict]:
+    """Answer one question. Yields events: tool_call, tool_error, then exactly one of answer | refused | blocked.
+    tools_off: tool names withheld from the model (experiments, e.g. the agent without search_text)."""
     model = model or os.environ["AGENT_MODEL"]
     use_cache = os.environ.get("AGENT_CACHE", "false").lower() == "true" if use_cache is None else use_cache
     cid = str(uuid.uuid4())
@@ -160,7 +162,8 @@ def run(question: str, client, tracer, db, model: str | None = None, use_cache: 
         if tracer.spent_today() >= DAILY_CAP_USD:
             yield {"type": "refused", "conversation_id": cid, "text": "The daily spending limit has been reached. Please try again tomorrow."}
             return
-        req = {"model": model, "max_tokens": MAX_TOKENS, "system": SYSTEM, "tools": tools.tool_specs(), "messages": messages}
+        specs = [t for t in tools.tool_specs() if t["name"] not in tools_off]
+        req = {"model": model, "max_tokens": MAX_TOKENS, "system": SYSTEM, "tools": specs, "messages": messages}
         if os.environ.get("AGENT_EFFORT"):  # models with effort levels (e.g. claude-haiku-5-5: low|medium|high)
             req["output_config"] = {"effort": os.environ["AGENT_EFFORT"]}
         key = hashlib.sha256(json.dumps(req, sort_keys=True).encode()).hexdigest()
@@ -185,6 +188,8 @@ def run(question: str, client, tracer, db, model: str | None = None, use_cache: 
                     continue
                 yield {"type": "tool_call", "name": b["name"], "input": b["input"]}
                 try:
+                    if b["name"] in tools_off:
+                        raise KeyError(b["name"])
                     out, is_error = tools.run_tool(db, b["name"], b["input"]), False
                 except (KeyError, ValidationError) as e:
                     out, is_error = {"error": f"invalid tool call: {type(e).__name__}: {str(e)[:300]}"}, True

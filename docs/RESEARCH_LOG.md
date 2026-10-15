@@ -517,6 +517,49 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 - **Done now (no accounts):** demo-only data export/import (4.3 MB; 2,649 players, 37,375 passages; import tested on a fresh Postgres), the one-command local setup, the walkthrough script, and the owner's ordered account-setup list (`docs/deploy/SETUP.md`).
 - **Evidence:** `docs/PLAN.md` (M7), `scout/demo_data.py`, `scout/local_demo.py`, `docs/DEMO.md`, `docs/deploy/`.
 
+### 2026-10-15 — PRE-REGISTRATION: does Wikipedia retrieval (search_text) improve the agent's answers? (before any run)
+- **Question:** On questions whose answers Transfermarkt records, does the agent answer more often correctly, and
+  hallucinate less, with search_text than without it? Does that differ between famous and lesser-known players?
+- **Set (`scout/evals/text.jsonl`, built by `scout/evals/text_set.py`, seed 20261015; separate from dev and held-out):**
+  36 questions, 6 per type and value band, one per player, all demo players.
+  - *transfer* (18): "Which club did X join in the summer YYYY transfer window?" (2016–2025) where the transfers table
+    has exactly one senior move between 1 July and 15 September of YYYY. Left out: youth/reserve sides, no-club
+    destinations, and moves back to a club the player had left before (loan returns). Truth: the destination club;
+    answers match it or a listed alias (`ALIASES`, written after sampling, before any run) as whole words, accents folded.
+  - *contract* (18): "As of June 2026, until when does X's contract with CLUB run?" where Transfermarkt's contract
+    expiry (`players.contract_expiration_date`, the dump of 12 June 2026, the demo date) is after 30 June 2026 and the
+    dump's current club is the demo club. Truth: the expiry year.
+  - Bands by demo market value: high ≥ EUR 30m, mid EUR 5–30m, low < EUR 5m.
+- **Conditions:** A, the agent as deployed (all five tools); B, the same agent with search_text withheld from the tool
+  list (`tools_off`), free to answer from its own knowledge or decline. Same model (`AGENT_MODEL`, claude-haiku-5-5),
+  effort, system prompt, guardrails and settings; one run per question and condition, response cache on.
+- **Labels (automatic, `scout/evals/text_exp.py`):** *correct* if the answer names the truth; *declined* if nothing is
+  released (refused/blocked) or the truth is missing and the answer says it can't tell; *wrong* (hallucinated)
+  otherwise. Graded on the released answer (**primary**) and on the first draft before the number/citation check
+  (**secondary**: in B the number check blocks a contract year that no tool returned, so the draft shows what the
+  model knows). *Supported:* a claim cites a passage that contains the truth (correct) or the year it states
+  (contract); wrong transfer claims are judged by the owner. The owner reviews every wrong and declined label
+  (`docs/evals/text_review.md`); any override needs a reason, and both automatic and reviewed counts are reported.
+- **Decision rule (fixed in advance):**
+  - Retrieval **improves accuracy** if A has more correct released answers than B and the exact two-sided McNemar
+    test on the 36 pairs gives p < 0.05 (reviewed labels).
+  - Retrieval **reduces hallucination** if A has fewer wrong released answers than B, same test on wrong/not-wrong.
+  - Per band and per type: descriptive only, with 95% Wilson intervals (n = 6 per cell per condition; too small to
+    decide anything). The supported share and the drafts are descriptive.
+  - Sensitivity: transfer questions whose destination is not the player's demo club (5 of 18 are, and get_player shows
+    the current club in both conditions).
+- **Known limitations:** Transfermarkt is the ground truth and can itself be wrong; Wikipedia revisions are those in
+  force on 12 June 2026, so a recent move or extension may be missing from them; 36 questions only detect large
+  differences. Grader changes after seeing answers are logged as deviations, with both results shown.
+- **Also, at no API cost (descriptive, `--contracts`):** extracted contract end dates as of 12 June 2026 (latest
+  `contract_until` statement in extract-v3 documents published before that date) against Transfermarkt's expiry for the
+  demo players: coverage and same-year agreement, split by whether the extracted date is still in the future.
+  Expected to be stale: the newest extracted document is from 31 August 2024 (the June 2026 revisions were fetched for
+  retrieval but never extracted).
+- **Cost estimate:** past traces on claude-haiku-5-5 give $0.0011 per question with search_text and $0.0008 without
+  (max $0.0017): about $0.08 for 72 runs, worst case about $0.12; `--max-usd 0.20` stops the run.
+- **Result:** not recorded yet (separate entry after the run).
+
 ---
 
 ## Paper notes
