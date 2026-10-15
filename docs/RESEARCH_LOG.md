@@ -560,6 +560,48 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
   (max $0.0017): about $0.08 for 72 runs, worst case about $0.12; `--max-usd 0.20` stops the run.
 - **Result:** not recorded yet (separate entry after the run).
 
+### 2026-10-15 — RESULT: Wikipedia retrieval vs none (pre-registered experiment; automatic labels, owner review pending)
+- **Run:** 72 conversations (36 questions × A/B) at commit `da74840`, `claude-haiku-5-5`, $0.058 (estimate $0.08, cap
+  $0.20). Report: `reports/text_retrieval.md`; answers to review: `docs/evals/text_review.md`.
+- **Released answers:**
+
+  | Condition | Correct | Wrong | Declined |
+  |---|---|---|---|
+  | A (with search_text) | 24/36 (67%, CI 50–80%) | 1/36 | 11/36 |
+  | B (without) | 4/36 (11%, CI 4–25%) | 0/36 | 32/36 |
+
+  Paired: 20 questions only A got right, 0 only B; exact McNemar p < 0.001. **Decision rule: retrieval improves
+  accuracy.** Hallucination: 1 vs 0 wrong, p = 1.0, so **no reduction shown**. The single "wrong" (A, Camavinga) is a
+  scope refusal the decline regex missed, pending the owner's review.
+- **B hardly hallucinates, because it declines.** Under the same system prompt (numbers only from tools; "if a player
+  is not in the data, say so"), B answered "my tools don't have that" 32 times. Its 4 correct answers all came from
+  get_player's current club (questions where the player hasn't moved since). The drafts equal the released answers:
+  **0 of 36 B answers reached the number check.** So B measures the deployed agent minus retrieval, not the model's
+  own knowledge. The contract gap users see is structural through the prompt's tools-only rules, not through the check.
+- **Sensitivity** (13 transfer questions whose destination isn't the current club): A 12/13 correct, B 0/13.
+- **Contracts:** A got 8/18 correct and declined the other 10 without guessing. In 2 of those 10 (Díaz "a four-year
+  deal" from July 2025, Ouattara "a five-year contract" from August 2025), the passage gave a duration but no end
+  year, and the no-calculation rule stops the agent deriving one. In the rest, the passages don't give the current
+  contract's end date.
+- **By band** (descriptive, n = 12 per cell): A correct high 9/12, mid 9/12, low 6/12. Lesser-known players' pages
+  carry fewer facts; B is 1–2/12 in every band.
+- **Citations:** 24 of A's 25 claims are supported by a cited passage containing the truth; the other is the
+  Camavinga refusal.
+- **Deviation (presentation only, after seeing results):** the contract paragraph had said B's years are retried and
+  blocked by the number check. In this run no B answer reached the check, so the sentence now reports the count and
+  attributes the structural part to the prompt. Labels and decision rule are unchanged; the report was regenerated
+  from the response cache ($0, identical labels).
+- **Contracts vs Transfermarkt (no API, `reports/text_contracts.md`):**
+  - Coverage: 587/2,426 demo players with a Transfermarkt expiry also have an extracted end date.
+  - Same year: 18% overall; 41% where the extracted date is still in the future; 0% where it has already passed.
+  - This mostly measures **staleness**: the extraction stops at August 2024, while Transfermarkt's dates are from
+    June 2026.
+- **Follow-ups:**
+  - (1) The owner's review of the wrong/declined labels; then the reviewed counts.
+  - (2) Extract the June 2026 demo pages (~$0.30) for a fair extraction-accuracy check (not run).
+  - (3) Optional: a B variant with a prompt that allows answering from general knowledge, to measure the model's own
+    knowledge, which this design doesn't.
+
 ---
 
 ## Paper notes
