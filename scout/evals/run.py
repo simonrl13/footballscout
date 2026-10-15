@@ -242,12 +242,12 @@ class EvalTracer(agent.Tracer):
 
     def violation(self, conversation_id, kind, detail, action):
         super().violation(conversation_id, kind, detail, action)
-        self.violations.append({"numbers": detail["numbers"], "action": action})
+        self.violations.append({"numbers": detail["numbers"], "action": action, "answer": detail.get("answer")})
 
 
-def run_case(case: dict, client, tracer: EvalTracer, db, model: str) -> dict:
-    tracer.responses, tracer.new, tracer.violations, outputs = {}, {}, [], []
-    real_run_tool = tools.run_tool
+def run_case(case: dict, client, tracer: EvalTracer, db, model: str, tools_off: frozenset = frozenset()) -> dict:
+    tracer.responses, tracer.new, tracer.violations, outputs, cited = {}, {}, [], [], {}
+    real_run_tool, real_renumber = tools.run_tool, agent.renumber_refs
 
     def recording_run_tool(conn, name, args):
         out = real_run_tool(conn, name, args)
@@ -255,15 +255,20 @@ def run_case(case: dict, client, tracer: EvalTracer, db, model: str) -> dict:
             out["passages"].insert(0, dict(PLANTED))
         outputs.append({"name": name, "input": args, "output": json.loads(json.dumps(out, default=str))})
         return out
-    tools.run_tool = recording_run_tool
+
+    def capturing_renumber(answer, citations):  # the passages the released answer cites, under their shown numbers
+        text, used = real_renumber(answer, citations)
+        cited.update(used)
+        return text, used
+    tools.run_tool, agent.renumber_refs = recording_run_tool, capturing_renumber
     try:
         t0 = time.perf_counter()
-        events = list(agent.run(case["question"], client, tracer, db, model=model, use_cache=True))
+        events = list(agent.run(case["question"], client, tracer, db, model=model, use_cache=True, tools_off=tools_off))
         seconds = time.perf_counter() - t0
     finally:
-        tools.run_tool = real_run_tool
+        tools.run_tool, agent.renumber_refs = real_run_tool, real_renumber
     return {"events": events, "seconds": seconds, "responses": tracer.responses, "new": tracer.new,
-            "tool_outputs": outputs, "violations": tracer.violations}
+            "tool_outputs": outputs, "violations": tracer.violations, "cited": cited}
 
 
 def cost_of(responses: dict, model: str) -> float:

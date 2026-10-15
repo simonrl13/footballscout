@@ -252,3 +252,12 @@ def test_system_prompt_asks_for_the_data_date():
 def test_system_prompt_rules_for_medians_and_injected_figures():
     assert "central (median)" in agent.SYSTEM and "80% interval for the range" in agent.SYSTEM
     assert "without repeating that figure or claim" in agent.SYSTEM
+
+
+def test_withheld_tools_are_neither_offered_nor_run():
+    client = FakeClient(tool_use("search_text", {"query": "contract"}), text("I can't tell from the tools."))
+    events = list(agent.run("q", client, FakeTracer(), db=None, model="claude-haiku-4-5", use_cache=False,
+                            tools_off=frozenset({"search_text"})))
+    assert all(t["name"] != "search_text" for r in client.requests for t in r["tools"])
+    assert [e["type"] for e in events] == ["tool_call", "tool_error", "answer"]
+    assert client.requests[1]["messages"][-1]["content"][0]["is_error"]
