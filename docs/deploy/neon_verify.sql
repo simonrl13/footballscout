@@ -42,6 +42,6 @@ SELECT pg_get_userbyid(e.grantee), 'tables', e.privilege_type || ' on ' || count
        || string_agg(c.relname, ', ' ORDER BY c.relname)
 FROM pg_class c, aclexplode(c.relacl) e
 WHERE c.relnamespace = 'public'::regnamespace AND c.relkind IN ('r', 'v', 'p')
-  AND pg_get_userbyid(e.grantee) LIKE 'scout\_%'
+  AND e.grantee <> c.relowner AND pg_get_userbyid(e.grantee) LIKE 'scout\_%'  -- grants, not the owner's own rights
 GROUP BY e.grantee, e.privilege_type
 ORDER BY 1, 2;
