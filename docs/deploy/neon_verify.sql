@@ -5,7 +5,8 @@
 --                 default privilege "SELECT on tables created by scout_loader in public"
 --   scout_tracer  attributes LOGIN, database CONNECT, schema public USAGE
 --   no "member" rows for neondb_owner except "admin" (from CREATE ROLE; no inherit, no set)
--- After the import, also: scout_reader SELECT on every table; scout_tracer SELECT + INSERT on the agent_* tables.
+-- After the import and neon_after_import.sql: 16 rows, adding scout_reader SELECT on 8 tables (none of them agent_*),
+-- scout_tracer INSERT on agent_calls + agent_violations and SELECT on agent_calls (see SETUP.md step A6).
 -- (TEMP on the database comes from Postgres' default grant to PUBLIC, not from these scripts.)
 WITH r(rolname) AS (VALUES ('scout_loader'), ('scout_reader'), ('scout_tracer'))
 SELECT r.rolname AS role, 'attributes' AS kind,

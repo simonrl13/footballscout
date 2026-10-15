@@ -24,7 +24,13 @@ Regions (decided 2026-10-14): GCP **`europe-west1`** (Belgium) with Neon **AWS E
    `uv run --env-file .env python -m scout.demo_data import --url-env NEON_LOADER_URL`
    It prints the row counts (2,649 players, 37,375 passages). Reader and tracer strings go to GCP in step B5.
 6. Run [neon_after_import.sql](neon_after_import.sql) (trace tables: no reader access, tracer only what the API
-   writes), then [neon_verify.sql](neon_verify.sql) again. Repeat both after any re-import.
+   writes), then [neon_verify.sql](neon_verify.sql) again. Repeat both after any re-import. Expected: **16 rows**:
+   - the 13 from before the import (attributes, database, schema, the reader's default privilege, and
+     `neondb_owner` as `admin` only on each role);
+   - `scout_reader`: SELECT on **8 tables**, `demo_players, text_documents, text_extractions, text_mentions,
+     text_passages, text_signals, wiki_snapshot_revisions, wikidata_players` (four of them hold data; the import's
+     schema scripts create the other four empty), and nothing on `agent_*`;
+   - `scout_tracer`: INSERT on `agent_calls, agent_violations`; SELECT on `agent_calls`.
 
 ## B. Google Cloud (Cloud Run for the API; Secret Manager for keys)
 1. Create a project (note its **project ID** and **project number**) and link a billing account.
