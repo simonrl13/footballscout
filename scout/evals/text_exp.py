@@ -115,12 +115,19 @@ def summary(df: pd.DataFrame, col: str) -> list[str]:
 
 def write_report(df: pd.DataFrame, model: str, commit: str, spent: float) -> None:
     a, b = (df[df.condition == c].set_index("id") for c in ("A", "B"))
+
     def pairs(lab):  # (only A has the label, only B has it)
         return int(((a.label == lab) & (b.label != lab)).sum()), int(((b.label == lab) & (a.label != lab)).sum())
     (only_a, only_b), (wrong_a, wrong_b) = pairs("correct"), pairs("wrong")
     claims = df[df.label != "declined"]
     sup = [f"| {c} | {len(g)} | {int(g.supported.eq(True).sum())} | {int(g.supported.isna().sum())} |"
            for c, g in claims.groupby("condition")]
+    ct = df[df.type == "contract"]
+    side = ["| Condition | Level | Correct | Wrong (hallucinated) | Declined |", "|---|---|---|---|---|"]
+    for cond, g in ct.groupby("condition"):
+        for level, col in [("released (user-visible)", "label"), ("first draft", "draft_label")]:
+            side.append(f"| {cond} | {level} | " + " | ".join(cell(int((g[col] == x).sum()), len(g))
+                                                             for x in ("correct", "wrong", "declined")) + " |")
     lines = [
         "# Does Wikipedia retrieval improve the agent's answers?", "",
         f"Commit `{commit}`, model `{model}`, {time.strftime('%Y-%m-%d')}; new API spend ${spent:.3f}. Pre-registration and "
@@ -130,20 +137,35 @@ def write_report(df: pd.DataFrame, model: str, commit: str, spent: float) -> Non
         f"Paired comparison of correct answers: only A correct {only_a}, only B correct {only_b}, exact McNemar "
         f"p = {mcnemar_p(only_a, only_b):.3f}. Wrong answers: only A wrong {wrong_a}, only B wrong {wrong_b}, "
         f"p = {mcnemar_p(wrong_a, wrong_b):.3f}.", "",
+        "## Contract questions: released answers next to first drafts", "",
+        "In B no tool returns a contract year, so any year the model writes from memory fails the number check: the "
+        "answer is retried, then blocked and counted as declined. **The user-visible contract gap between A and B is "
+        "therefore partly structural** (the guardrail, not only missing knowledge). The first drafts, graded before the "
+        "check, show what the model would have said.", "", *side, "",
         "Sensitivity (pre-registered): transfer questions whose destination is not the player's demo club (get_player "
         "shows the current club in both conditions):", "", *summary(df[df.type.eq("transfer") & ~df.club_gives_it], "label"), "",
         "## First drafts (before the number/citation check)", "", *summary(df, "draft_label"), "",
         "## Claims supported by a cited source", "",
         "| Condition | Claims (correct + wrong) | Supported by a cited passage | Owner to judge |", "|---|---|---|---|", *sup, "",
         "B cannot cite (search_text is withheld), so its claims are unsupported by construction.", "",
+        "## Limitations", "",
+        "- The system prompt is identical in both conditions, so in B it still describes search_text (\"search_text "
+        "returns passages from players' Wikipedia pages...\") although the tool is withheld. The model may decline more "
+        "readily in B, expecting a tool it doesn't have.",
+        "- Transfermarkt is the ground truth and can itself be wrong; the Wikipedia revisions are those in force on 12 June "
+        "2026 and may miss a recent move or extension.",
+        "- 36 questions (6 per type and band per condition): only large differences are detectable; per-band rows are "
+        "descriptive.",
+        "- Labels are automatic until the owner's review of every wrong and declined label.", "",
         "## Per question", "", "| Question | Truth | Band | A | B | A draft | B draft |", "|---|---|---|---|---|---|---|"]
     for i, r in a.iterrows():
         lines.append(f"| {r.question} | {r.truth} | {r.band} | {r.label} | {b.label[i]} | {r.draft_label} | {b.draft_label[i]} |")
     REPORT.write_bytes(("\n".join(lines) + "\n").encode())
     review = ["# Text experiment: answers to review", "",
-              f"Commit `{commit}`. Mark each automatic label right or wrong; for wrong transfer claims, also whether a cited "
-              "passage supports the club named.", ""]
-    for _, r in df.sort_values(["id", "condition"]).iterrows():
+              f"Commit `{commit}`. Every answer labelled wrong or declined (released or draft). Mark each automatic label "
+              "right or wrong; for wrong transfer claims, also whether a cited passage supports the club named.", ""]
+    flagged = df.label.isin(["wrong", "declined"]) | df.draft_label.isin(["wrong", "declined"])
+    for _, r in df[flagged].sort_values(["id", "condition"]).iterrows():
         review += [f"## {r.id} ({r.condition}): {r.label}" + (f", draft {r.draft_label}" if r.draft_label != r.label else ""),
                    "", f"**Q:** {r.question}  ", f"**Truth:** {r.truth}  ", "**Review:** [ ] label right  [ ] label wrong", "",
                    "> " + (r.answer or "(no answer)").replace("\n", "\n> "), ""]
@@ -197,6 +219,9 @@ def contracts() -> None:
              "contract end date stated in any Wikipedia document published before 12 June 2026 (extract-v3). The newest "
              f"extracted document is from {pd.to_datetime(sig.available_at).max():%Y-%m-%d}: the June 2026 revisions "
              "were fetched for retrieval but never extracted. No API calls.", "",
+             "**Read this as a staleness measure, not an extraction-accuracy measure.** The extracted dates stop at August "
+             "2024 while Transfermarkt's are from June 2026, so most disagreements are contracts signed or extended in "
+             "between. A fair accuracy check needs the June 2026 demo pages extracted (follow-up, about $0.30; not run).", "",
              "| | Players |", "|---|---|",
              f"| Demo players | {len(df)} |", f"| Transfermarkt expiry known | {int(df.tm.notna().sum())} |",
              f"| Extracted end date known | {int(df.end.notna().sum())} |",
