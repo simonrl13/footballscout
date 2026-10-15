@@ -13,7 +13,8 @@ Regions (decided 2026-10-14): GCP **`europe-west1`** (Belgium) with Neon **AWS E
 ## A. Neon (Postgres for the demo data, ~50 MB of the 0.5–1 GB free storage)
 1. Sign up at neon.com; create a project `scout-demo`, Postgres 16, region **AWS Europe Central 1 (Frankfurt)**.
 2. Open the SQL Editor on database `neondb` and run [neon_roles.sql](neon_roles.sql) after replacing its three
-   password placeholders with passwords you generate locally.
+   password placeholders with passwords you generate locally. Then run [neon_verify.sql](neon_verify.sql) and check
+   its output against the expected end state at its top.
 3. From the Neon dashboard ("Connect"), build the three connection strings yourself, one per role, each ending in
    `?sslmode=require`. Keep them out of chat.
 4. Add **only the loader's** string to your local `.env` as `NEON_LOADER_URL=...`, then run

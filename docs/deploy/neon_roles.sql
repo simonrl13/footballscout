@@ -15,5 +15,11 @@ GRANT USAGE, CREATE ON SCHEMA public TO scout_loader;
 GRANT USAGE ON SCHEMA public TO scout_reader, scout_tracer;
 
 -- every table the loader creates is readable, and only readable, by scout_reader;
--- scout_tracer gets SELECT/INSERT on the agent_* tables only, from db/agent.sql when the demo data is imported
+-- scout_tracer gets SELECT/INSERT on the agent_* tables only, from db/agent.sql when the demo data is imported.
+-- On Postgres 16 only a role holding scout_loader's privileges may set its default privileges, and creating the role
+-- gave neondb_owner ADMIN OPTION only; so it takes the membership (inherit only) for this one statement and drops it.
+GRANT scout_loader TO neondb_owner WITH INHERIT TRUE, SET FALSE;
 ALTER DEFAULT PRIVILEGES FOR ROLE scout_loader IN SCHEMA public GRANT SELECT ON TABLES TO scout_reader;
+REVOKE scout_loader FROM neondb_owner;
+
+-- Check the result with neon_verify.sql.
