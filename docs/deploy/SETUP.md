@@ -13,7 +13,8 @@ Regions (decided 2026-10-14): GCP **`europe-west1`** (Belgium) with Neon **AWS E
 ## A. Neon (Postgres for the demo data, ~50 MB of the 0.5–1 GB free storage)
 1. Sign up at neon.com; create a project `scout-demo`, Postgres 16, region **AWS Europe Central 1 (Frankfurt)**.
 2. Open the SQL Editor on database `neondb` and run [neon_roles.sql](neon_roles.sql) after replacing its three
-   password placeholders with passwords you generate locally.
+   password placeholders with passwords you generate locally. Then run [neon_verify.sql](neon_verify.sql) and check
+   its output against the expected end state at its top.
 3. From the Neon dashboard ("Connect"), build the three connection strings yourself, one per role, each ending in
    `?sslmode=require`. Keep them out of chat.
 4. Add **only the loader's** string to your local `.env` as `NEON_LOADER_URL=...`, then run
@@ -22,6 +23,14 @@ Regions (decided 2026-10-14): GCP **`europe-west1`** (Belgium) with Neon **AWS E
    GitHub release):
    `uv run --env-file .env python -m scout.demo_data import --url-env NEON_LOADER_URL`
    It prints the row counts (2,649 players, 37,375 passages). Reader and tracer strings go to GCP in step B5.
+6. Run [neon_after_import.sql](neon_after_import.sql) (trace tables: no reader access, tracer only what the API
+   writes), then [neon_verify.sql](neon_verify.sql) again. Repeat both after any re-import. Expected: **16 rows**:
+   - the 13 from before the import (attributes, database, schema, the reader's default privilege, and
+     `neondb_owner` as `admin` only on each role);
+   - `scout_reader`: SELECT on **8 tables**, `demo_players, text_documents, text_extractions, text_mentions,
+     text_passages, text_signals, wiki_snapshot_revisions, wikidata_players` (four of them hold data; the import's
+     schema scripts create the other four empty), and nothing on `agent_*`;
+   - `scout_tracer`: INSERT on `agent_calls, agent_violations`; SELECT on `agent_calls`.
 
 ## B. Google Cloud (Cloud Run for the API; Secret Manager for keys)
 1. Create a project (note its **project ID** and **project number**) and link a billing account.

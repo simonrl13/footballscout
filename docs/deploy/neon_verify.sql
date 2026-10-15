@@ -1,0 +1,48 @@
+-- Scout demo database on Neon: what each scout_* role can do. Read-only; run in the Neon SQL Editor on neondb.
+-- Expected after neon_roles.sql (before the demo data import):
+--   scout_loader  attributes LOGIN, database CONNECT, schema public USAGE + CREATE
+--   scout_reader  attributes LOGIN, database CONNECT, schema public USAGE,
+--                 default privilege "SELECT on tables created by scout_loader in public"
+--   scout_tracer  attributes LOGIN, database CONNECT, schema public USAGE
+--   no "member" rows for neondb_owner except "admin" (from CREATE ROLE; no inherit, no set)
+-- After the import and neon_after_import.sql: 16 rows, adding scout_reader SELECT on 8 tables (none of them agent_*),
+-- scout_tracer INSERT on agent_calls + agent_violations and SELECT on agent_calls (see SETUP.md step A6).
+-- (TEMP on the database comes from Postgres' default grant to PUBLIC, not from these scripts.)
+WITH r(rolname) AS (VALUES ('scout_loader'), ('scout_reader'), ('scout_tracer'))
+SELECT r.rolname AS role, 'attributes' AS kind,
+       concat_ws(', ', CASE WHEN p.rolcanlogin THEN 'LOGIN' END, CASE WHEN p.rolsuper THEN 'SUPERUSER' END,
+                 CASE WHEN p.rolcreaterole THEN 'CREATEROLE' END, CASE WHEN p.rolcreatedb THEN 'CREATEDB' END,
+                 CASE WHEN p.rolbypassrls THEN 'BYPASSRLS' END, CASE WHEN p.rolreplication THEN 'REPLICATION' END) AS detail
+FROM r JOIN pg_roles p USING (rolname)
+UNION ALL
+SELECT r.rolname, 'database ' || current_database(),
+       concat_ws(', ', CASE WHEN has_database_privilege(r.rolname, current_database(), 'CONNECT') THEN 'CONNECT' END,
+                 CASE WHEN has_database_privilege(r.rolname, current_database(), 'CREATE') THEN 'CREATE' END,
+                 CASE WHEN has_database_privilege(r.rolname, current_database(), 'TEMP') THEN 'TEMP' END)
+FROM r
+UNION ALL
+SELECT r.rolname, 'schema public',
+       concat_ws(', ', CASE WHEN has_schema_privilege(r.rolname, 'public', 'USAGE') THEN 'USAGE' END,
+                 CASE WHEN has_schema_privilege(r.rolname, 'public', 'CREATE') THEN 'CREATE' END)
+FROM r
+UNION ALL
+SELECT pg_get_userbyid(a.member), 'member of ' || pg_get_userbyid(a.roleid),
+       concat_ws(', ', CASE WHEN a.admin_option THEN 'admin' END, CASE WHEN a.inherit_option THEN 'inherit' END,
+                 CASE WHEN a.set_option THEN 'set' END) || ' (granted by ' || pg_get_userbyid(a.grantor) || ')'
+FROM pg_auth_members a
+WHERE pg_get_userbyid(a.roleid) LIKE 'scout\_%' OR pg_get_userbyid(a.member) LIKE 'scout\_%'
+UNION ALL
+SELECT pg_get_userbyid(e.grantee), 'default privilege',
+       e.privilege_type || ' on ' || CASE d.defaclobjtype WHEN 'r' THEN 'tables' WHEN 'S' THEN 'sequences'
+           WHEN 'f' THEN 'functions' ELSE d.defaclobjtype::text END
+       || ' created by ' || pg_get_userbyid(d.defaclrole) || coalesce(' in ' || d.defaclnamespace::regnamespace::text, '')
+FROM pg_default_acl d, aclexplode(d.defaclacl) e
+WHERE pg_get_userbyid(d.defaclrole) LIKE 'scout\_%' OR pg_get_userbyid(e.grantee) LIKE 'scout\_%'
+UNION ALL
+SELECT pg_get_userbyid(e.grantee), 'tables', e.privilege_type || ' on ' || count(*) || ' table(s): '
+       || string_agg(c.relname, ', ' ORDER BY c.relname)
+FROM pg_class c, aclexplode(c.relacl) e
+WHERE c.relnamespace = 'public'::regnamespace AND c.relkind IN ('r', 'v', 'p')
+  AND e.grantee <> c.relowner AND pg_get_userbyid(e.grantee) LIKE 'scout\_%'  -- grants, not the owner's own rights
+GROUP BY e.grantee, e.privilege_type
+ORDER BY 1, 2;
