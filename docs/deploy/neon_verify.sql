@@ -38,9 +38,10 @@ SELECT pg_get_userbyid(e.grantee), 'default privilege',
 FROM pg_default_acl d, aclexplode(d.defaclacl) e
 WHERE pg_get_userbyid(d.defaclrole) LIKE 'scout\_%' OR pg_get_userbyid(e.grantee) LIKE 'scout\_%'
 UNION ALL
-SELECT g.grantee, 'tables', g.privilege_type || ' on ' || count(*) || ' table(s): '
-       || string_agg(g.table_name, ', ' ORDER BY g.table_name)
-FROM information_schema.role_table_grants g
-WHERE g.grantee LIKE 'scout\_%' AND g.table_schema = 'public'
-GROUP BY g.grantee, g.privilege_type
+SELECT pg_get_userbyid(e.grantee), 'tables', e.privilege_type || ' on ' || count(*) || ' table(s): '
+       || string_agg(c.relname, ', ' ORDER BY c.relname)
+FROM pg_class c, aclexplode(c.relacl) e
+WHERE c.relnamespace = 'public'::regnamespace AND c.relkind IN ('r', 'v', 'p')
+  AND pg_get_userbyid(e.grantee) LIKE 'scout\_%'
+GROUP BY e.grantee, e.privilege_type
 ORDER BY 1, 2;
