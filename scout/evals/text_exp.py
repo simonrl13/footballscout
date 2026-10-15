@@ -92,7 +92,7 @@ def grade(case: dict, res: dict) -> dict:
     draft = res["violations"][0]["answer"] if res["violations"] else text
     lab = label(case, text)
     return {"label": lab, "draft_label": label(case, draft), "answer": text or final.get("text", ""), "draft": draft,
-            "outcome": final["type"], "cites": len(res["cited"]),
+            "outcome": final["type"], "cites": len(res["cited"]), "checked": bool(res["violations"]),
             "supported": supported(case, text, res["cited"]) if lab != "declined" else None,
             "tools": [o["name"] for o in res["tool_outputs"]], "seconds": round(res["seconds"], 1)}
 
@@ -138,10 +138,13 @@ def write_report(df: pd.DataFrame, model: str, commit: str, spent: float) -> Non
         f"p = {mcnemar_p(only_a, only_b):.3f}. Wrong answers: only A wrong {wrong_a}, only B wrong {wrong_b}, "
         f"p = {mcnemar_p(wrong_a, wrong_b):.3f}.", "",
         "## Contract questions: released answers next to first drafts", "",
-        "In B no tool returns a contract year, so any year the model writes from memory fails the number check: the "
-        "answer is retried, then blocked and counted as declined. **The user-visible contract gap between A and B is "
-        "therefore partly structural** (the guardrail, not only missing knowledge). The first drafts, graded before the "
-        "check, show what the model would have said.", "", *side, "",
+        "In B no tool returns a contract year, so a year written from memory would fail the number check (retried, "
+        "then blocked and counted as declined), and the system prompt already tells the model to copy every number from "
+        "a tool. **The user-visible contract gap between A and B is therefore partly structural.** The first drafts, "
+        "graded before the check, show what the model would have said. In this run "
+        f"{int((ct.condition.eq('B') & ct.checked).sum())} of {int(ct.condition.eq('B').sum())} B contract answers reached "
+        "the number check: the model declined before writing a year, so the structural part comes from the prompt's "
+        "tools-only rules rather than the check itself.", "", *side, "",
         "Sensitivity (pre-registered): transfer questions whose destination is not the player's demo club (get_player "
         "shows the current club in both conditions):", "", *summary(df[df.type.eq("transfer") & ~df.club_gives_it], "label"), "",
         "## First drafts (before the number/citation check)", "", *summary(df, "draft_label"), "",
