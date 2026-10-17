@@ -313,6 +313,18 @@ limit **$10/month** (owner, Anthropic Console), GCP budget alert at **$1** (owne
 - [ ] First deploy, smoke test against the public URL (health, tools, one `/ask`, a 429), README with the live link
 - [ ] Production smoke evals: the CI subset against the deployed URL (cached where possible)
 
+### After M7: retrieval experiment, condition C (follow-up to the 2026-10-15 result)
+The A/B run showed retrieval improves accuracy (A 24/36 vs B 4/36 correct), but B declined 32 times under the
+tools-only prompt, so it couldn't show whether retrieval reduces hallucination.
+- [ ] Pre-register in docs/RESEARCH_LOG.md before any run: condition **C** is the same agent without search_text,
+  with a system prompt that allows answering from general knowledge, labelled as such. Measure **wrong
+  (hallucinated) answers against condition A** on the same 36 questions (`scout/evals/text.jsonl`), paired (exact
+  McNemar), with the same labels and the first-draft grading. Questions to fix before the run:
+  - which prompt rules change: the number rule must allow years and clubs stated from general knowledge, or C hits
+    the number check;
+  - whether C runs with the number check off, or with it on and graded at draft level.
+- [ ] Cost estimate first (expected about $0.03 for 36 runs) and the owner's OK before running.
+
 ---
 
 ## 4. Budget and what to cut
