@@ -59,11 +59,22 @@ CREATE TABLE IF NOT EXISTS agent_cache (
     created_at   timestamptz NOT NULL DEFAULT now()
 );
 
+-- Public demo rate limits (scout/api/limits.py): one row per accepted request, the client IP only as an HMAC with a
+-- secret pepper; rows older than 48 hours are deleted by the API. scout_reader gets no access (revoked below).
+CREATE TABLE IF NOT EXISTS agent_requests (
+    created_at timestamptz NOT NULL DEFAULT now(),
+    ip_hash    text NOT NULL,
+    kind       text NOT NULL                      -- ask | tools
+);
+CREATE INDEX IF NOT EXISTS agent_requests_key ON agent_requests (ip_hash, kind, created_at);
+REVOKE ALL ON agent_requests FROM scout_reader;
+
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'scout_tracer') THEN
         GRANT SELECT, INSERT ON agent_calls, agent_violations, agent_cache TO scout_tracer;
         GRANT USAGE ON SEQUENCE agent_calls_id_seq, agent_violations_id_seq TO scout_tracer;
+        GRANT SELECT, INSERT, DELETE ON agent_requests TO scout_tracer;
     END IF;
 END $$;
 

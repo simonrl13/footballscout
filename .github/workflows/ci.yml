@@ -23,8 +23,16 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+      # The API image (runtime dependencies only): no ignores.
+      - run: uv export --frozen --format requirements-txt --no-emit-project --no-default-groups -o requirements-runtime.txt
+      - run: uvx pip-audit -r requirements-runtime.txt --disable-pip --strict
+      # Everything (local pipeline, training, dev tools). Ignored advisories have fixes younger than two weeks
+      # (SECURITY.md, "Dependency exceptions"); none is in CISA's KEV list. The step fails once the ignores expire.
       - run: uv export --frozen --format requirements-txt --no-emit-project --all-groups -o requirements-audit.txt
-      - run: uvx pip-audit -r requirements-audit.txt --disable-pip --strict
+      - name: Audit all groups (ignores expire 2026-11-02)
+        run: |
+          if [ "$(date -u +%F)" \> 2026-11-02 ]; then echo "pip-audit ignores expired: bump or review them"; exit 1; fi
+          uvx pip-audit -r requirements-audit.txt --disable-pip --strict             --ignore-vuln PYSEC-2026-4320             --ignore-vuln CVE-2026-112395 --ignore-vuln CVE-2026-112397 --ignore-vuln CVE-2026-112400             --ignore-vuln CVE-2026-112404 --ignore-vuln CVE-2026-112895 --ignore-vuln CVE-2026-112896             --ignore-vuln CVE-2026-112897 --ignore-vuln CVE-2026-112899             --ignore-vuln CVE-2026-113725
 
   secrets:
     runs-on: ubuntu-latest

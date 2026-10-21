@@ -92,5 +92,14 @@ Regions (decided 2026-10-14): GCP **`europe-west1`** (Belgium) with Neon **AWS E
 1. Set the "scout" workspace's monthly spend limit to **$10**. The API's own cap is $0.50 a day (in code).
 
 ## D. Then Claude (no further accounts)
-Repository variables from step B7 (`gh variable set`), the deploy workflow (OIDC, pinned actions), the first
-deploy from `main`, a smoke test against the public URL, and the README with the live link.
+1. **Owner, once:** run [neon_rate_limits.sql](neon_rate_limits.sql) in the Neon SQL Editor (the per-IP request log;
+   no passwords), then [neon_verify.sql](neon_verify.sql): **17 rows** (step A6's 16 plus `scout_tracer` DELETE on
+   `agent_requests`; the tracer's INSERT and SELECT rows also list `agent_requests`; the reader's rows don't change).
+   A later re-import creates the same table from `db/agent.sql`, so after one the expected count stays 17.
+2. Claude: repository variables (`gh variable set`: `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_WIF_PROVIDER`,
+   `AGENT_MODEL`, `AGENT_EFFORT`; none secret) and the deploy workflow
+   ([.github/workflows/deploy.yml](../../.github/workflows/deploy.yml)): on every merge to `main` that touches the
+   app, build the image, push it to Artifact Registry and deploy the `scout` service with `PUBLIC_DEMO=true` and the
+   four secrets from Secret Manager; then a health check that needs the database.
+3. Claude: the first deploy, a smoke test against the public URL (health, tools, one `/ask`, a 429 with a spoofed
+   `X-Forwarded-For`), then a stop for the owner's review before the link is shared or added to the README.

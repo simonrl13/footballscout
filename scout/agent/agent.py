@@ -35,7 +35,7 @@ from scout.agent import tools
 from scout.agent.numbers import unsupported
 from scout.text.extract import prices
 
-DAILY_CAP_USD = 2.00
+DAILY_CAP_USD = 0.50
 MAX_STEPS = 6
 MAX_TOKENS = 4096  # thinking counts toward it on models that think by default
 
