@@ -106,7 +106,7 @@ Please don't open a public issue. Use GitHub's private vulnerability reporting o
   - `tests/test_evals_replay.py` (CI, no key or DB): the recorded subset must replay with the same grades, injection cases must pass, and no released answer may fail the number check.
   - `mcp==2.2.0`: official SDK (Model Context Protocol, LF Projects), first release 2024-11, ~235M downloads/month; pinned to a release older than two weeks (2.3.0 was 7 days old); pip-audit clean.
 - M5 adds the planted-injection Wikipedia revision and agent-level read-only tests.
-- **Public mode and rate limits (M7):** `tests/test_limits.py`: the client IP is the last `X-Forwarded-For` entry, so spoofed entries don't change the key; the stored key is an HMAC that reveals neither IP nor pepper; no token is needed in public mode; over a limit gives 429 with `Retry-After` on tools and `/ask`; `/health` is never counted; neither the pepper nor the IP appears in logs or responses; a missing pepper fails closed; with the DB: the minute and UTC-day limits, rejected requests not counted, the 48-hour purge, and `scout_reader` refused on `agent_requests`. Neon grants checked with `docs/deploy/neon_verify.sql` (17 rows) after `neon_rate_limits.sql`, tested first on a local Postgres 16 with a non-superuser owner.
+- **Public mode and rate limits (M7):** `tests/test_limits.py`: the client IP is the last `X-Forwarded-For` entry, so spoofed entries don't change the key; the stored key is an HMAC that reveals neither IP nor pepper; no token is needed in public mode; over a limit gives 429 with `Retry-After` on tools and `/ask`; `/health` is never counted; neither the pepper nor the IP appears in logs or responses; a missing pepper fails closed; IPv6 clients share a key per /64 and IPv4-mapped addresses count as IPv4; invalid `/ask` bodies (422) are not counted while valid ones are; with the DB: the minute and UTC-day limits, rejected requests not counted, the 48-hour purge, and `scout_reader` refused on `agent_requests`. Neon grants checked with `docs/deploy/neon_verify.sql` (17 rows) after `neon_rate_limits.sql`, tested first on a local Postgres 16 with a non-superuser owner.
 
 ## Public demo (M7)
 The API runs on Google Cloud Run (`europe-west1`, service `scout`) with the demo-only database on Neon (Frankfurt).
@@ -118,14 +118,35 @@ Open access, no tokens (`PUBLIC_DEMO=true`). MCP stays local (stdio). Limits (ap
 | Tool endpoints (no LLM) | 60 per minute | Cloud Run at most 2 instances, concurrency 20, 120 s timeout |
 | `/health` | none | — |
 
+Live service settings checked by the owner on 2026-10-21 (`gcloud run services describe`), matching
+`.github/workflows/deploy.yml`: max 2 instances, min 0, concurrency 20, timeout 120 s, 1 CPU, 512 MiB, startup CPU boost on.
+Both counters live in Postgres, not in instance memory: rate limits are rows in `agent_requests`, daily spend is the
+sum of `agent_calls.cost_usd` for the UTC day. They are shared by every instance and survive scale-to-zero and
+instance recycling.
+
 - **Public surface:** `/health` (no database call in public mode), the five tool endpoints, `POST /ask`,
   `/.well-known/security.txt`, and FastAPI's generated `/docs` and `/openapi.json` (`/redoc` is off). Nothing writes project data; requests write only trace rows (`agent_calls`, `agent_violations`)
   and the rate-limit log (`agent_requests`) as `scout_tracer`.
 - **Over a limit:** HTTP 429 with `Retry-After` (60 s, or the seconds to UTC midnight for the daily `/ask` limit).
-  Rejected requests are not counted.
-- **Client IPs:** the app keeps only HMAC-SHA256(IP, pepper), deleted after 48 hours, and never logs the IP or the
-  pepper. uvicorn's access log is off in the container (a local check found it printing the forwarded IP). Cloud Run's own request logs (Google Cloud Logging, owner-only, default 30-day retention) record the client
-  IP, as for any Cloud Run service.
+  Rejected requests are not counted, and neither are invalid questions (HTTP 422): `/ask` is counted only after its
+  body validates, so typos don't use up anyone's daily questions. Tool endpoints count every request (cheap; it also
+  limits floods of malformed requests).
+- **Client IP assumption (verified 2026-10-21 on the service's run.app URL):** the key is the last
+  `X-Forwarded-For` entry, the one Google's front end appends; entries a client sends itself come before it. Seventy
+  requests with a different spoofed header each shared one counter, while a request from another network was admitted
+  at the same moment. **This breaks behind a load balancer or a custom-domain proxy**, where the last entry is the
+  proxy's address and all clients would share one counter: revisit `scout/api/limits.py` before adding either.
+  IPv6 clients are keyed by their /64 (a subscriber's usual allocation), so rotating addresses inside one /64 doesn't
+  reset the limit; IPv4-mapped addresses count as IPv4.
+- **Client IPs and logs:**
+  - The app keeps only HMAC-SHA256(IP, pepper), deleted after 48 hours, and never logs the IP or the pepper.
+    uvicorn's access log is off in the container (a local check found it printing the forwarded IP).
+  - **App logs: no client IPs and no question text** (verified by the owner on 2026-10-21 over two days of every
+    Cloud Run log except the request log; the only IP-like strings were uvicorn's `0.0.0.0` bind line, once per cold
+    start).
+  - **Known limitation, kept for incident response:** Cloud Run's request log records the raw client IP
+    (`httpRequest.remoteIp`); it is owner-only, with Cloud Logging's default 30-day retention.
+  - Admin Activity audit logs record the deploy caller's IP (the GitHub Actions runner), as for any GCP change.
 - **Headers:** the same set as the owner's portfolio site on every response: `Content-Security-Policy`
   (`default-src 'none'; frame-ancestors 'none'`, looser on `/docs` only, for Swagger UI from cdn.jsdelivr.net with
   an inline init script), HSTS, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, `X-Frame-Options: DENY`, COOP.
@@ -138,8 +159,16 @@ Open access, no tokens (`PUBLIC_DEMO=true`). MCP stays local (stdio). Limits (ap
   secrets; the deployer can deploy Cloud Run, push to the `scout` Artifact Registry repository and act as the runtime
   account, and is reachable only from GitHub Actions runs on this repository's `main`. The only third-party action in
   the deploy is `google-github-actions/auth`, pinned by commit SHA.
-- **Budget guards:** US$0.50/day in code, Anthropic workspace limit $10/month, a Cloud Run spend limit and a project
-  budget alert in GCP.
+- **What stops spending** (verified 2026-10-21):
+  1. **App cap, US$0.50 per UTC day** (`DAILY_CAP_USD`), on the server, checked before every model call against the
+     Postgres total shared by all instances; a model without a price fails the request instead of going uncounted.
+     It can overshoot by at most one call per conversation in flight: at most 40 in flight (2 instances ×
+     concurrency 20) × about US$0.003 for a worst-case call (10k input + 4,096 output tokens on `claude-haiku-5-5`)
+     ≈ US$0.12.
+  2. **Anthropic workspace limit, US$10 per month**: a hard stop on Anthropic's side.
+  3. **GCP budgets (R$5) only send alerts.** There is no hard GCP spend limit beyond the trial credit. The trial ends
+     on 2027-01-01; when it ends or the credit runs out, Google stops the resources and charges nothing, so the
+     service goes down (PLAN.md: decision due 2026-12-15).
 - **Data:** the demo database holds the 2,649 demo players, 37,375 Wikipedia passages and revision metadata; no raw
   Kaggle tables and no full Wikipedia revisions.
 
@@ -161,7 +190,7 @@ Bumped instead (fix older than two weeks): aiohttp 3.14.3 → 3.14.4 (8 advisori
 ## Known limitations
 - Text documents are written with the loader role. The API and agent will only read them (`scout_reader`).
 - `.claude/settings.json` guards the coding assistant, not the machine: shell commands outside its deny list could still read `.env`. Tools that load `.env` (e.g. `uv --env-file`) may echo malformed lines in warnings (see the incident log).
-- Rate limits are per IP: many IPs (a botnet, or IPv6 rotation) can still use the whole daily spend cap, which then refuses everyone until UTC midnight. The cap bounds the cost, not availability.
+- Rate limits are per IP (per /64 for IPv6): many addresses (a botnet, or clients with many /64s) can still use the whole daily spend cap, which then refuses everyone until UTC midnight. The cap bounds the cost, not availability.
 - The rate-limit count and insert are not atomic, so a burst from one IP can overshoot a limit by a few requests.
 - The number check allows a number if some source number rounds to it, so small derived integers ("under 19" from an age of 18.8) can pass. Evals with an LLM judge (M5) cover derived claims.
 - The rest is completed in M6.

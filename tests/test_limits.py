@@ -20,6 +20,15 @@ def test_client_ip_is_the_entry_googles_front_end_appends():
     assert limits.client_ip({}, "10.0.0.1") == "10.0.0.1"
 
 
+def test_ipv6_clients_are_keyed_by_their_64():
+    a = limits.client_ip({"x-forwarded-for": "2001:db8:1:2:aaaa::1"}, None)
+    assert a == "2001:db8:1:2::/64"
+    assert limits.client_ip({"x-forwarded-for": "6.6.6.6, 2001:db8:1:2:ffff:ffff:ffff:ffff"}, None) == a  # same /64
+    assert limits.client_ip({"x-forwarded-for": "2001:db8:1:3::1"}, None) != a  # next /64: another client
+    assert limits.client_ip({"x-forwarded-for": "::ffff:203.0.113.9"}, None) == "203.0.113.9"  # IPv4-mapped
+    assert limits.client_ip({"x-forwarded-for": "not-an-ip"}, None) == "not-an-ip"  # kept as is, still hashed
+
+
 def test_ip_hash_is_keyed_and_reveals_neither_ip_nor_pepper(monkeypatch):
     monkeypatch.setenv("RATE_LIMIT_PEPPER", PEPPER)
     h = limits.ip_hash("203.0.113.9")
@@ -161,7 +170,7 @@ def test_ask_answers_carry_the_ai_notice(public, monkeypatch):
     import anthropic
 
     from scout.agent import agent
-    client, _ = public
+    client, seen = public
     monkeypatch.setattr(anthropic, "Anthropic", lambda: None)
     class FakeConn:
         def close(self):
@@ -178,3 +187,11 @@ def test_ask_answers_carry_the_ai_notice(public, monkeypatch):
     monkeypatch.setattr(agent, "run", fake_run)
     body = client.post("/ask", json={"question": "Who is Kane?"}).text
     assert body.count(main.AI_NOTICE) == 1 and '"type": "answer"' in body
+    assert seen == [(limits.ip_hash("testclient"), "ask")]  # a valid question is counted once
+
+
+def test_invalid_questions_are_not_counted(public):
+    client, seen = public
+    for body in [{"question": "x"}, {"question": "y" * 501}, {"query": "Kane"}, None]:
+        assert client.post("/ask", json=body).status_code == 422
+    assert seen == []

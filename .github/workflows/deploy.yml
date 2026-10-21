@@ -46,7 +46,7 @@ jobs:
         run: |
           gcloud run deploy scout --project "$PROJECT" --region "$REGION" --image "$IMAGE" --quiet \
             --service-account "scout-runtime@$PROJECT.iam.gserviceaccount.com" --allow-unauthenticated \
-            --min-instances 0 --max-instances 2 --memory 512Mi --concurrency 20 --timeout 120 --port 8000 \
+            --min-instances 0 --max-instances 2 --memory 512Mi --concurrency 20 --timeout 120 --port 8000 --cpu-boost \
             --set-env-vars "PUBLIC_DEMO=true,AGENT_MODEL=$AGENT_MODEL,AGENT_EFFORT=$AGENT_EFFORT" \
             --set-secrets "ANTHROPIC_API_KEY=anthropic-api-key:latest,READER_DATABASE_URL=reader-database-url:latest,TRACER_DATABASE_URL=tracer-database-url:latest,RATE_LIMIT_PEPPER=rate-limit-pepper:latest"
       - name: Health and database check

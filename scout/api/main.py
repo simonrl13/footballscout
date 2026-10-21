@@ -18,7 +18,9 @@ from fastapi.responses import PlainTextResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import Field
 
-from scout.agent import tools
+import anthropic
+
+from scout.agent import agent, tools
 from scout.api import limits
 
 app = FastAPI(title="Scout", redoc_url=None)
@@ -67,16 +69,22 @@ def public() -> bool:
     return os.environ.get("PUBLIC_DEMO", "false").lower() == "true"
 
 
-def access(kind: str):
+def admit(request: Request, kind: str) -> None:
+    """Public mode: count this request against the client's limits, or raise 429."""
+    key = limits.ip_hash(limits.client_ip(request.headers, request.client.host if request.client else None))
+    with psycopg.connect(os.environ["TRACER_DATABASE_URL"], connect_timeout=5, autocommit=True) as conn:
+        wait = limits.check(conn, key, kind)
+    if wait is not None:
+        raise HTTPException(429, "rate limit exceeded, please try again later", headers={"Retry-After": str(wait)})
+
+
+def access(kind: str | None):
+    """Private mode: the bearer token. Public mode: the rate limit for `kind` (None: counted in the endpoint)."""
     def check(request: Request, cred: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]) -> None:
         if not public():
             authorized(cred)
-            return
-        key = limits.ip_hash(limits.client_ip(request.headers, request.client.host if request.client else None))
-        with psycopg.connect(os.environ["TRACER_DATABASE_URL"], connect_timeout=5, autocommit=True) as conn:
-            wait = limits.check(conn, key, kind)
-        if wait is not None:
-            raise HTTPException(429, "rate limit exceeded, please try again later", headers={"Retry-After": str(wait)})
+        elif kind:
+            admit(request, kind)
     return Depends(check)
 
 
@@ -85,7 +93,7 @@ def db():
         yield conn
 
 
-Auth, AskAuth = access("tools"), access("ask")
+Auth, AskAuth = access("tools"), access(None)  # /ask is counted after its body validates: typos (422) cost nothing
 DB = Annotated[psycopg.Connection, Depends(db)]
 PlayerIdPath = Annotated[int, Path(ge=1, le=10**8)]
 
@@ -141,18 +149,17 @@ class Ask(tools.Strict):
 
 
 @app.post("/ask", dependencies=[AskAuth])
-def ask(a: Ask):
+def ask(a: Ask, request: Request):
     """Server-sent events: tool_call / tool_error progress, then one answer | refused | blocked event. Answers carry
     `notice`: they are AI-generated (EU AI Act Article 50)."""
-    import anthropic
-
-    from scout.agent.agent import Tracer, run
+    if public():
+        admit(request, "ask")
 
     def events():
-        tracer = Tracer()
+        tracer = agent.Tracer()
         try:
             with tools.connect() as conn:
-                for e in run(a.question, anthropic.Anthropic(), tracer, conn):
+                for e in agent.run(a.question, anthropic.Anthropic(), tracer, conn):
                     if e["type"] == "answer":
                         e["notice"] = AI_NOTICE
                     yield f"data: {json.dumps(e, ensure_ascii=False)}\n\n"
