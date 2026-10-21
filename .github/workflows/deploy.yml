@@ -49,7 +49,9 @@ jobs:
             --min-instances 0 --max-instances 2 --memory 512Mi --concurrency 20 --timeout 120 --port 8000 \
             --set-env-vars "PUBLIC_DEMO=true,AGENT_MODEL=$AGENT_MODEL,AGENT_EFFORT=$AGENT_EFFORT" \
             --set-secrets "ANTHROPIC_API_KEY=anthropic-api-key:latest,READER_DATABASE_URL=reader-database-url:latest,TRACER_DATABASE_URL=tracer-database-url:latest,RATE_LIMIT_PEPPER=rate-limit-pepper:latest"
-      - name: Health check
+      - name: Health and database check
         run: |
           URL=$(gcloud run services describe scout --project "$PROJECT" --region "$REGION" --format 'value(status.url)')
-          curl -fsS --retry 3 --retry-delay 5 "$URL/health" | tee /dev/stderr | grep -q '"db":"ok"'
+          curl -fsS --retry 3 --retry-delay 5 "$URL/health"
+          # /health doesn't touch the database in public mode; one tool call checks both roles (reader + tracer)
+          curl -fsS --retry 3 --retry-delay 5 "$URL/players/search?name=kane&limit=1" | grep -q '"count":1'

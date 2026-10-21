@@ -2,20 +2,24 @@
 name = "scout"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
+# Runtime: what the API image installs (Dockerfile: --no-default-groups).
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "psycopg[binary]>=3.2",
     "pandas>=3.0.6",
+    "anthropic>=1.11.0",
+]
+
+[dependency-groups]
+# Pipeline, training, tracking and the local MCP server: installed locally and in CI, never in the API image.
+local = [
     "pyarrow>=25.0.1",
     "lightgbm>=4.7.0",
     "scikit-learn>=1.9.1",
     "mlflow>=3.16.1",
-    "anthropic>=1.11.0",
     "mcp==2.2.0",
 ]
-
-[dependency-groups]
 dev = [
     "pytest>=8",
     "httpx>=0.27",
@@ -23,6 +27,9 @@ dev = [
     "matplotlib>=3.11.2",
     "pre-commit>=4.6.2",
 ]
+
+[tool.uv]
+default-groups = ["dev", "local"]
 
 [build-system]
 requires = ["hatchling"]

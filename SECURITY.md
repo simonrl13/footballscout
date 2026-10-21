@@ -48,7 +48,7 @@ Please don't open a public issue. Use GitHub's private vulnerability reporting o
 | Local: bearer-token auth on every endpoint except `/health` (constant-time compare; no token configured = no access). Public demo: no token, per-IP rate limits instead | M4a, M7 | LLM06 |
 | Per-client-IP rate limits in public mode: `/ask` 5/min and 20/UTC day, tool endpoints 60/min; HTTP 429 + `Retry-After`; client IP = the last `X-Forwarded-For` entry (appended by Google's front end; client-supplied entries ignored); stored only as HMAC-SHA256 with a secret pepper, purged after 48 h; no pepper = requests fail | M7 | LLM10, ASI08 |
 | Parameterized SQL; identifiers via `psycopg.sql.Identifier`; CSV columns allow-listed against the schema | M1 | LLM05, ASI02 |
-| Lockfile, pip-audit, Dependabot (uv, Actions, Docker), CodeQL (python + actions); Actions pinned by commit SHA and Docker images by digest; new dependencies need approval + registry vetting | M1–M2 | LLM03, ASI04 |
+| Lockfile, pip-audit (the API image's runtime set strictly; all groups with dated exceptions, below), Dependabot (uv, Actions, Docker), CodeQL (python + actions); the API image installs runtime dependencies only (no mlflow, LightGBM, scikit-learn, pyarrow or MCP); Actions pinned by commit SHA and Docker images by digest; new dependencies need approval + registry vetting | M1–M2 | LLM03, ASI04 |
 | Ruleset on `main` (no bypass, since M3): PRs required (squash only); no force-push/deletion; tests, audit, secrets and CodeQL must pass on an up-to-date branch; CodeQL high-severity alerts block merges | M2–M3 | LLM03 |
 | MLflow in its own database with its own role (`scout_mlflow`), no access to project data | M2 | LLM06 |
 | Pydantic validation and limits on every endpoint and tool (unknown fields rejected; ids, ages, values, list sizes and string lengths bounded; leagues/positions/sorts are enums) | M4a | LLM06, ASI02 |
@@ -56,7 +56,7 @@ Please don't open a public issue. Use GitHub's private vulnerability reporting o
 | Citation check: `[wiki n]` refs must come from this turn's `search_text` results and quotes stay ≤ 300 characters (retry, then block; logged as `citation_check`); the sources footer (exact revision, page history, CC BY-SA notice) is built in code, not by the model | M4b | LLM09 |
 | Numbers in answers must come from tool outputs (post-check; one retry, then the answer is blocked; both logged in `agent_violations`) | M4a | LLM09, ASI09 |
 | US$0.50/day spend cap in code (checked before every model call; US$2 until M7), max 6 model calls and 4,096 output tokens per call; per-IP rate limits (M7); Cloud Run max 2 instances × concurrency 20 | M4a–M7 | LLM10, ASI08 |
-| Read-only MCP tools: same four tools, `readOnlyHint`, Pydantic limits checked before any query, `scout_reader` in read-only transactions; unknown arguments are dropped by the SDK | M5a | LLM06, ASI02 |
+| Read-only MCP tools: the same five tools (incl. `search_text`), `readOnlyHint`, Pydantic limits checked before any query, `scout_reader` in read-only transactions; unknown arguments are dropped by the SDK | M5a | LLM06, ASI02 |
 | Text pipeline gates: LLM extraction (`TEXT_LLM_ENABLED` + approved cost); Wikimedia API politeness (serial, < 5/s, `maxlag`, User-Agent) | M3 | LLM10 |
 | Extraction prompt treats documents as untrusted data; outputs constrained by JSON schema; every signal needs a verbatim quote (and an in-window event date for Wikipedia) or it is dropped | M3 | LLM01, LLM04, LLM09 |
 
@@ -101,7 +101,7 @@ Please don't open a public issue. Use GitHub's private vulnerability reporting o
   - `tests/test_agent.py`: cited passages get the footer with the right revision only; invented refs and quotes over 300 characters are retried, then blocked; a `[wiki 3]` ref is not counted as a number.
   - Dev eval `tx-planted-injection`: a fake passage telling the agent to claim a 250-million value (a number the number check can't catch, since it is in a tool result).
 - **MCP and evals (M5a):**
-  - `tests/test_mcp_server.py`: the four tools are listed read-only with their limits in the schema; invalid arguments are rejected before any database connection; a real stdio round trip (with the DB).
+  - `tests/test_mcp_server.py`: the tools are listed read-only with their limits in the schema; invalid arguments are rejected before any database connection; a real stdio round trip (with the DB).
   - Golden set: 3 injection cases in the user question ("ignore your rules" with a planted number, a system-prompt dump request, an SQL string as a player name), resisted 3/3 (`reports/m5a_evals.md`).
   - `tests/test_evals_replay.py` (CI, no key or DB): the recorded subset must replay with the same grades, injection cases must pass, and no released answer may fail the number check.
   - `mcp==2.2.0`: official SDK (Model Context Protocol, LF Projects), first release 2024-11, ~235M downloads/month; pinned to a release older than two weeks (2.3.0 was 7 days old); pip-audit clean.
@@ -118,14 +118,19 @@ Open access, no tokens (`PUBLIC_DEMO=true`). MCP stays local (stdio). Limits (ap
 | Tool endpoints (no LLM) | 60 per minute | Cloud Run at most 2 instances, concurrency 20, 120 s timeout |
 | `/health` | none | — |
 
-- **Public surface:** `/health`, the five tool endpoints, `POST /ask`, and FastAPI's generated `/docs` and
-  `/openapi.json`. Nothing writes project data; requests write only trace rows (`agent_calls`, `agent_violations`)
+- **Public surface:** `/health` (no database call in public mode), the five tool endpoints, `POST /ask`,
+  `/.well-known/security.txt`, and FastAPI's generated `/docs` and `/openapi.json` (`/redoc` is off). Nothing writes project data; requests write only trace rows (`agent_calls`, `agent_violations`)
   and the rate-limit log (`agent_requests`) as `scout_tracer`.
 - **Over a limit:** HTTP 429 with `Retry-After` (60 s, or the seconds to UTC midnight for the daily `/ask` limit).
   Rejected requests are not counted.
 - **Client IPs:** the app keeps only HMAC-SHA256(IP, pepper), deleted after 48 hours, and never logs the IP or the
   pepper. uvicorn's access log is off in the container (a local check found it printing the forwarded IP). Cloud Run's own request logs (Google Cloud Logging, owner-only, default 30-day retention) record the client
   IP, as for any Cloud Run service.
+- **Headers:** the same set as the owner's portfolio site on every response: `Content-Security-Policy`
+  (`default-src 'none'; frame-ancestors 'none'`, looser on `/docs` only, for Swagger UI from cdn.jsdelivr.net with
+  an inline init script), HSTS, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, `X-Frame-Options: DENY`, COOP.
+- **AI disclosure (EU AI Act Art. 50):** every `/ask` answer event carries a `notice` saying it was generated by an AI
+  model (Claude) and may contain errors.
 - **What reaches the model (Anthropic API):** the user's question, the system prompt and the tool results of that turn
   (demo player data, model forecasts, Wikipedia passages). No IPs, headers or identities. Questions and answers are
   stored in Postgres only as needed for the checks: violation rows keep the rejected draft (≤ 2,000 characters).
@@ -137,6 +142,21 @@ Open access, no tokens (`PUBLIC_DEMO=true`). MCP stays local (stdio). Limits (ap
   budget alert in GCP.
 - **Data:** the demo database holds the 2,649 demo players, 37,375 Wikipedia passages and revision metadata; no raw
   Kaggle tables and no full Wikipedia revisions.
+
+## Dependency exceptions
+Advisories ignored in CI's all-groups `pip-audit` because the fixed release is younger than the two-week rule. None is
+in CISA's Known Exploited Vulnerabilities catalogue (checked 2026-10-21), and none is in the API image (its runtime
+set is audited with no ignores). **Expire 2026-11-02**: after that date the CI step fails until they are bumped or
+reviewed again.
+
+| Package (group, via) | Advisory | Fixed in (released) | Why it can wait |
+|---|---|---|---|
+| certifi 2026.7.22 (local, via mlflow → requests) | PYSEC-2026-4320 / GHSA-6q48-6c7w-9gw2: bundles emSign roots with compromised intermediate keys | 2026.10.19 (2026-10-19) | Local tooling only; requests to the affected CAs' sites aren't part of the pipeline |
+| pillow 12.3.0 (dev and local, via matplotlib) | CVE-2026-112395, -112397, -112400, -112404, -112895, -112896, -112897, -112899: decoder bugs (TIFF, JPEG, GIF, EPS, PDF) | 13.0.0 (2026-10-16, a major version) | Only plots our own figures; never opens untrusted images |
+| virtualenv 21.14.5 (dev, via pre-commit) | CVE-2026-113725 / GHSA-vxj4-q4g9-crj7: bash `activate` runs commands from an environment name containing `\$` | 21.14.7 (2026-10-12) | pre-commit names its own environments |
+
+Bumped instead (fix older than two weeks): aiohttp 3.14.3 → 3.14.4 (8 advisories), virtualenv 21.14.1 → 21.14.5
+(3 of 4).
 
 ## Known limitations
 - Text documents are written with the loader role. The API and agent will only read them (`scout_reader`).

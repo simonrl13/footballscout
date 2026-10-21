@@ -138,3 +138,35 @@ def test_container_has_no_access_log():
     """uvicorn's access log would print client IPs (it trusts X-Forwarded-For from local proxies); Cloud Run logs requests."""
     from scout.data.manifest import ROOT
     assert '"--no-access-log"' in (ROOT / "Dockerfile").read_text(encoding="utf-8")
+
+
+def test_public_health_never_touches_the_database(public, monkeypatch):
+    client, seen = public
+    monkeypatch.setattr(main.psycopg, "connect", lambda *a, **k: (_ for _ in ()).throw(AssertionError("DB call")))
+    assert client.get("/health").json() == {"status": "ok"} and not seen
+
+
+def test_security_headers_and_security_txt(public):
+    client, _ = public
+    r = client.get("/players/7")
+    assert r.headers["X-Content-Type-Options"] == "nosniff" and r.headers["X-Frame-Options"] == "DENY"
+    assert "frame-ancestors 'none'" in r.headers["Content-Security-Policy"]
+    assert "cdn.jsdelivr.net" in client.get("/docs").headers["Content-Security-Policy"]
+    assert "cdn.jsdelivr.net" not in r.headers["Content-Security-Policy"]
+    txt = client.get("/.well-known/security.txt")
+    assert txt.headers["content-type"].startswith("text/plain") and "Expires: " in txt.text and "Contact: " in txt.text
+    assert client.get("/redoc").status_code == 404
+
+
+def test_ask_answers_carry_the_ai_notice(public, monkeypatch):
+    import anthropic
+
+    from scout.agent import agent
+    client, _ = public
+    monkeypatch.setattr(anthropic, "Anthropic", lambda: None)
+    monkeypatch.setattr(agent, "Tracer", lambda: type("T", (), {"conn": type("C", (), {"close": lambda self: None})()})())
+    monkeypatch.setattr(tools, "connect", lambda: contextlib.nullcontext())
+    monkeypatch.setattr(agent, "run", lambda q, c, t, db: iter([{"type": "tool_call", "name": "x", "input": {}},
+                                                                 {"type": "answer", "text": "Hi"}]))
+    body = client.post("/ask", json={"question": "Who is Kane?"}).text
+    assert body.count(main.AI_NOTICE) == 1 and '"type": "answer"' in body
