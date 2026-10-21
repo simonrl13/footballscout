@@ -66,7 +66,7 @@ Blocks 2–3 need no text source and no approvals beyond those already given (An
 | Deploy | **Kept:** AWS Lightsail or a small EC2 instance running `docker compose`, **≤ US$15/month**. A 7th week (Nov 16–22) was added for it. Model routing and the thin UI stay deferred. |
 | Dependencies | Approved: `mlflow`, `anthropic`, `mcp`, `voyageai`, `pre-commit` + gitleaks, CodeQL. Intervals in plain numpy (split conformal). Tracing in Postgres; Langfuse is a stretch goal after the project. |
 | Embeddings | Voyage AI, cached in Postgres so each text is embedded once |
-| LLM spend | US$2/day cap on public endpoints, enforced in code. **Before any bulk LLM job: estimate the cost and wait for approval.** |
+| LLM spend | US$0.50/day cap on public endpoints (US$2 until M7), enforced in code. **Before any bulk LLM job: estimate the cost and wait for approval.** |
 | Eval thresholds | Placeholders until the first full eval run with a validated judge; then each is set just below the measured score and raised as quality improves |
 | Hand labeling | About 4 h, approved. Labeling files are prepared so they're fast to fill in. |
 | Repo | Goes public after M1: enable CodeQL then; a small sample of the CC0 data can go into CI |
@@ -263,7 +263,7 @@ Effort: S = up to 3 h, M = 3–8 h, L = more than 8 h.
 - [x] Tracing to Postgres (model, tokens in/out/cached, latency, cost, tools, violations) — since M4a
 - [x] Dashboard: cost per query, p95 latency, cache hit rate (views `agent_daily`, `agent_conversations`; `python -m scout.agent.dashboard`)
 - [x] Prompt caching on tools + system prompt: top-level automatic caching on every request. Verified cost model; on `claude-haiku-4-5` the prefix (~2,300 tokens) is under the 4,096-token minimum, so reads appear only on long multi-step turns (see the dashboard)
-- [ ] Rate limits on public endpoints
+- [x] Rate limits on public endpoints (M7: per-IP limits in public mode)
 - [ ] README: architecture diagram, results table (baselines, news ablation, evals, coverage, security), "what didn't work" (v0 first), data caveats
 - [ ] SECURITY.md complete with OWASP mapping and test evidence
 
@@ -300,15 +300,16 @@ limit **$10/month** (owner, Anthropic Console), GCP budget alert at **$1** (owne
   `X-Forwarded-For` entry Google's front end adds, not a client-supplied one (to verify against Cloud Run docs).
   Over the limit: HTTP 429 with `Retry-After`.
 - **Before anything is public** (all must be done and merged):
-  - [ ] per-IP rate limits + public mode, with tests (limits, 429s, spoofed `X-Forwarded-For`, pepper never logged)
-  - [ ] global daily cap lowered to US$0.50
-  - [ ] demo-only database loaded into Neon through the loader role; the API connects only as `scout_reader` and
+  - [x] per-IP rate limits + public mode, with tests (`scout/api/limits.py`, `tests/test_limits.py`) (limits, 429s, spoofed `X-Forwarded-For`, pepper never logged)
+  - [x] global daily cap lowered to US$0.50
+  - [x] demo-only database loaded into Neon through the loader role; the API connects only as `scout_reader` and
     `scout_tracer`
-  - [ ] GitHub Actions deploy via OIDC / Workload Identity Federation (no stored keys), only from `main` after the
-    required checks; new Actions (`google-github-actions/auth`, `deploy-cloudrun`) need approval and SHA pinning
-  - [ ] Anthropic key, database URLs and the pepper in GCP Secret Manager
-  - [ ] SECURITY.md: public surface, abuse limits, what data reaches the model, secrets and deploy identity
-- [ ] Owner's account setup in order: [docs/deploy/SETUP.md](deploy/SETUP.md) (Neon, then GCP, then the Anthropic
+  - [x] GitHub Actions deploy via OIDC / Workload Identity Federation (no stored keys), only from `main` after the
+    required checks; one new Action, `google-github-actions/auth` v3.0.0 pinned by SHA (`deploy-cloudrun` not
+    needed: the runner's gcloud deploys) (`.github/workflows/deploy.yml`)
+  - [x] Anthropic key, database URLs and the pepper in GCP Secret Manager (owner, 2026-10-21)
+  - [x] SECURITY.md: public surface, abuse limits, what data reaches the model, secrets and deploy identity
+- [x] Owner's account setup in order: [docs/deploy/SETUP.md](deploy/SETUP.md) (Neon, then GCP, then the Anthropic
   limit); Claude needs back only non-secret identifiers (Neon region, GCP project ID/number/region, WIF provider name)
 - [ ] First deploy, smoke test against the public URL (health, tools, one `/ask`, a 429), README with the live link
 - [ ] Production smoke evals: the CI subset against the deployed URL (cached where possible)

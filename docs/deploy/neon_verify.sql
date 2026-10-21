@@ -7,6 +7,7 @@
 --   no "member" rows for neondb_owner except "admin" (from CREATE ROLE; no inherit, no set)
 -- After the import and neon_after_import.sql: 16 rows, adding scout_reader SELECT on 8 tables (none of them agent_*),
 -- scout_tracer INSERT on agent_calls + agent_violations and SELECT on agent_calls (see SETUP.md step A6).
+-- After neon_rate_limits.sql: 17 rows; scout_tracer also gets SELECT, INSERT and DELETE on agent_requests (SETUP.md D1).
 -- (TEMP on the database comes from Postgres' default grant to PUBLIC, not from these scripts.)
 WITH r(rolname) AS (VALUES ('scout_loader'), ('scout_reader'), ('scout_tracer'))
 SELECT r.rolname AS role, 'attributes' AS kind,

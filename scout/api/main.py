@@ -1,7 +1,9 @@
 """Scout API: the five read-only tools as REST endpoints and the agent at POST /ask (server-sent events).
 
-Every endpoint except /health needs `Authorization: Bearer <SCOUT_API_TOKEN>`. Inputs are validated by the same
-Pydantic models the agent's tools use. Data access uses the read-only role; traces use scout_tracer.
+Access: with PUBLIC_DEMO=true (the deployed demo) there is no token and every endpoint except /health is rate-limited
+per client IP (scout/api/limits.py); otherwise every endpoint except /health needs
+`Authorization: Bearer <SCOUT_API_TOKEN>`. Inputs are validated by the same Pydantic models the agent's tools use.
+Data access uses the read-only role; traces and rate-limit counts use scout_tracer.
 """
 import json
 import os
@@ -9,12 +11,13 @@ import secrets
 from typing import Annotated
 
 import psycopg
-from fastapi import Depends, FastAPI, HTTPException, Path, Query
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import Field
 
 from scout.agent import tools
+from scout.api import limits
 
 app = FastAPI(title="Scout")
 bearer = HTTPBearer(auto_error=False)
@@ -26,12 +29,28 @@ def authorized(cred: Annotated[HTTPAuthorizationCredentials | None, Depends(bear
         raise HTTPException(401, "missing or invalid token", headers={"WWW-Authenticate": "Bearer"})
 
 
+def public() -> bool:
+    return os.environ.get("PUBLIC_DEMO", "false").lower() == "true"
+
+
+def access(kind: str):
+    def check(request: Request, cred: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]) -> None:
+        if not public():
+            return authorized(cred)
+        key = limits.ip_hash(limits.client_ip(request.headers, request.client.host if request.client else None))
+        with psycopg.connect(os.environ["TRACER_DATABASE_URL"], connect_timeout=5, autocommit=True) as conn:
+            wait = limits.check(conn, key, kind)
+        if wait is not None:
+            raise HTTPException(429, "rate limit exceeded, please try again later", headers={"Retry-After": str(wait)})
+    return Depends(check)
+
+
 def db():
     with tools.connect() as conn:
         yield conn
 
 
-Auth = Depends(authorized)
+Auth, AskAuth = access("tools"), access("ask")
 DB = Annotated[psycopg.Connection, Depends(db)]
 PlayerIdPath = Annotated[int, Path(ge=1, le=10**8)]
 
@@ -83,7 +102,7 @@ class Ask(tools.Strict):
     question: str = Field(min_length=3, max_length=500)
 
 
-@app.post("/ask", dependencies=[Auth])
+@app.post("/ask", dependencies=[AskAuth])
 def ask(a: Ask):
     """Server-sent events: tool_call / tool_error progress, then one answer | refused | blocked event."""
     import anthropic

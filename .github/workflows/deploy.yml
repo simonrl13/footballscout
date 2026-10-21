@@ -1,0 +1,55 @@
+name: Deploy
+
+# Public demo on Cloud Run (docs/deploy/SETUP.md, docs/PLAN.md M7). Runs only on main, which only changes through PRs
+# whose required checks passed; the Workload Identity provider also rejects tokens from any other repository or ref.
+# No stored keys: GitHub's OIDC token is exchanged for a short-lived token of the scout-deployer service account.
+# Non-secret identifiers are repository variables; secrets stay in GCP Secret Manager and are read by Cloud Run.
+on:
+  push:
+    branches: [main]
+    paths: [scout/**, Dockerfile, pyproject.toml, uv.lock, .python-version, .github/workflows/deploy.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # GitHub OIDC token for Workload Identity Federation
+    env:
+      PROJECT: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+      AGENT_MODEL: ${{ vars.AGENT_MODEL }}
+      AGENT_EFFORT: ${{ vars.AGENT_EFFORT }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: scout-deployer@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+      # gcloud ships with the runner image and uses the credentials the auth step wrote
+      - name: Build and push the image
+        run: |
+          IMAGE="$REGION-docker.pkg.dev/$PROJECT/scout/api:$GITHUB_SHA"
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy scout --project "$PROJECT" --region "$REGION" --image "$IMAGE" --quiet \
+            --service-account "scout-runtime@$PROJECT.iam.gserviceaccount.com" --allow-unauthenticated \
+            --min-instances 0 --max-instances 2 --memory 512Mi --concurrency 20 --timeout 120 --port 8000 \
+            --set-env-vars "PUBLIC_DEMO=true,AGENT_MODEL=$AGENT_MODEL,AGENT_EFFORT=$AGENT_EFFORT" \
+            --set-secrets "ANTHROPIC_API_KEY=anthropic-api-key:latest,READER_DATABASE_URL=reader-database-url:latest,TRACER_DATABASE_URL=tracer-database-url:latest,RATE_LIMIT_PEPPER=rate-limit-pepper:latest"
+      - name: Health check
+        run: |
+          URL=$(gcloud run services describe scout --project "$PROJECT" --region "$REGION" --format 'value(status.url)')
+          curl -fsS --retry 3 --retry-delay 5 "$URL/health" | tee /dev/stderr | grep -q '"db":"ok"'
