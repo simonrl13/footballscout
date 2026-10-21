@@ -163,7 +163,13 @@ def test_ask_answers_carry_the_ai_notice(public, monkeypatch):
     from scout.agent import agent
     client, _ = public
     monkeypatch.setattr(anthropic, "Anthropic", lambda: None)
-    monkeypatch.setattr(agent, "Tracer", lambda: type("T", (), {"conn": type("C", (), {"close": lambda self: None})()})())
+    class FakeConn:
+        def close(self):
+            pass
+
+    class FakeTracer:
+        conn = FakeConn()
+    monkeypatch.setattr(agent, "Tracer", FakeTracer)
     monkeypatch.setattr(tools, "connect", contextlib.nullcontext)
 
     def fake_run(question, client, tracer, db):
