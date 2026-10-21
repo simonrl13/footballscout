@@ -88,8 +88,8 @@ def test_public_mode_without_a_pepper_fails_closed(public, monkeypatch):
 def _tracer():
     try:
         return psycopg.connect(os.environ["TRACER_DATABASE_URL"], connect_timeout=3, autocommit=True)
-    except (KeyError, psycopg.Error):
-        pytest.skip("tracer database not available")
+    except (KeyError, psycopg.Error) as e:
+        raise pytest.skip.Exception("tracer database not available") from e
 
 
 @pytest.fixture
@@ -128,8 +128,8 @@ def test_rows_older_than_48_hours_are_purged(tracer):
 def test_reader_cannot_see_the_request_log():
     try:
         conn = tools.connect()
-    except (KeyError, psycopg.Error):
-        pytest.skip("database not available")
+    except (KeyError, psycopg.Error) as e:
+        raise pytest.skip.Exception("database not available") from e
     with conn, pytest.raises(psycopg.errors.InsufficientPrivilege):
         conn.execute("SELECT 1 FROM agent_requests LIMIT 1")
 
@@ -150,9 +150,8 @@ def test_security_headers_and_security_txt(public):
     client, _ = public
     r = client.get("/players/7")
     assert r.headers["X-Content-Type-Options"] == "nosniff" and r.headers["X-Frame-Options"] == "DENY"
-    assert "frame-ancestors 'none'" in r.headers["Content-Security-Policy"]
-    assert "cdn.jsdelivr.net" in client.get("/docs").headers["Content-Security-Policy"]
-    assert "cdn.jsdelivr.net" not in r.headers["Content-Security-Policy"]
+    assert r.headers["Content-Security-Policy"] == main.CSP and "frame-ancestors 'none'" in main.CSP
+    assert client.get("/docs").headers["Content-Security-Policy"] == main.DOCS_CSP != main.CSP
     txt = client.get("/.well-known/security.txt")
     assert txt.headers["content-type"].startswith("text/plain") and "Expires: " in txt.text and "Contact: " in txt.text
     assert client.get("/redoc").status_code == 404
@@ -165,8 +164,11 @@ def test_ask_answers_carry_the_ai_notice(public, monkeypatch):
     client, _ = public
     monkeypatch.setattr(anthropic, "Anthropic", lambda: None)
     monkeypatch.setattr(agent, "Tracer", lambda: type("T", (), {"conn": type("C", (), {"close": lambda self: None})()})())
-    monkeypatch.setattr(tools, "connect", lambda: contextlib.nullcontext())
-    monkeypatch.setattr(agent, "run", lambda q, c, t, db: iter([{"type": "tool_call", "name": "x", "input": {}},
-                                                                 {"type": "answer", "text": "Hi"}]))
+    monkeypatch.setattr(tools, "connect", contextlib.nullcontext)
+
+    def fake_run(question, client, tracer, db):
+        yield {"type": "tool_call", "name": "x", "input": {}}
+        yield {"type": "answer", "text": "Hi"}
+    monkeypatch.setattr(agent, "run", fake_run)
     body = client.post("/ask", json={"question": "Who is Kane?"}).text
     assert body.count(main.AI_NOTICE) == 1 and '"type": "answer"' in body

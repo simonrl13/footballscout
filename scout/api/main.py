@@ -70,7 +70,8 @@ def public() -> bool:
 def access(kind: str):
     def check(request: Request, cred: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]) -> None:
         if not public():
-            return authorized(cred)
+            authorized(cred)
+            return
         key = limits.ip_hash(limits.client_ip(request.headers, request.client.host if request.client else None))
         with psycopg.connect(os.environ["TRACER_DATABASE_URL"], connect_timeout=5, autocommit=True) as conn:
             wait = limits.check(conn, key, kind)
