@@ -560,6 +560,41 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
   (max $0.0017): about $0.08 for 72 runs, worst case about $0.12; `--max-usd 0.20` stops the run.
 - **Result:** not recorded yet (separate entry after the run).
 
+### 2026-10-21 — M7 deploy review: counters, spend layers, latency, client IP, logs (owner review + fixes)
+- **Context:** first public deploy (#50, commit `e486c33`); the owner asked for a read-only investigation before any
+  fix, then verified the cloud-side items in Cloud Shell and the console.
+- **Counters:** in Postgres, not instance memory (`agent_requests` rows; daily spend = sum of `agent_calls.cost_usd`),
+  so scale-to-zero, recycling and the second instance don't reset them. Live settings verified by the owner: max 2,
+  min 0, concurrency 20, timeout 120 s, 1 CPU, 512 MiB, startup CPU boost already on.
+- **Spend layers:** (1) app cap US$0.50/day on the server, overshoot bounded by in-flight calls (≈ US$0.12 worst
+  case); (2) Anthropic workspace limit US$10/month, a hard stop; (3) GCP budgets alert only. The GCP trial ends
+  2027-01-01 and then stops the service without charges: decision due 2026-12-15 (PLAN.md).
+- **Latency (`reports/m7_latency.md`):** 10 sequential `/ask`, 16 s apart, first after 27 idle minutes, US$0.0080.
+  Cold 23.4 s (≈ 8.9 s instance start incl. a 3.6 s app import and Neon waking; ≈ 9.0 s first-use import of the
+  Anthropic SDK and agent; 4.1 s model). Warm median 4.3 s (4.1–7.4), first event 1.9 s, model calls a median 80% of
+  the time. A single figure against the 6 s target hid this, so both are reported. Cause found: the non-root runtime
+  user can't write `__pycache__`, so each cold start compiled every module; and `/ask` imported the SDK lazily.
+  Fixes: `UV_COMPILE_BYTECODE=1`, imports at app start. CPU boost was already on, so it gets no credit;
+  `min-instances=1` rejected on cost. Re-measurement pending the deploy.
+- **Client IP:** last `X-Forwarded-For` entry confirmed on the run.app URL (spoofed headers share one counter; another
+  network admitted meanwhile). Valid only without a load balancer or custom-domain proxy (SECURITY.md). Gap found:
+  IPv6 was keyed per address, so one /64 could rotate; now keyed per /64 (IPv4-mapped → IPv4), with tests.
+- **Logs:** owner verified two days of app logs: no client IPs, no question text. Cloud Run's request log keeps the
+  raw IP (owner-only, 30 days): known limitation, kept for incident response. Audit logs hold the deployer's IP.
+- **422s:** invalid `/ask` bodies were counted (the limit ran as a dependency, before validation), so five typos cost a
+  minute and a quarter of a day's questions. Now `/ask` is counted after validation; tool endpoints still count all.
+- **Dependency audit (same day):** 17 more advisories were published after #50 merged (16 pillow, 1 virtualenv), all
+  fixed only in releases younger than two weeks and none in CISA KEV; added to the dated ignores under the owner's
+  rule (27 in all, expiring 2026-11-02; SECURITY.md "Dependency exceptions"). The runtime set stays clean.
+- **Owner amendments (2026-10-22, before approving #51):** check-and-count made atomic with a transaction-scoped
+  advisory lock per (limit, client); a concurrent-burst test (12 at once, stubbed model) admits exactly 5 and fails
+  without the lock (3/3 runs each way). A looser pre-validation bucket (20/min for any `/ask` request) bounds floods
+  of 422s, which still don't touch the question limits. A malformed last `X-Forwarded-For` entry goes to one shared
+  bucket (fail closed) instead of being hashed as its own key. The lazy SDK import had no recorded reason (M4a,
+  #14); `/health` touches neither the database nor the Anthropic API (test).
+- **Smoke evals:** pre-registered in PLAN.md (5 questions, `scout/evals/smoke.jsonl`, normal limits, no bypass) and
+  committed before any run; results in a separate entry.
+
 ---
 
 ## Paper notes

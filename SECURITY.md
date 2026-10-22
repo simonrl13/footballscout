@@ -46,7 +46,7 @@ Please don't open a public issue. Use GitHub's private vulnerability reporting o
 | Each container gets only its own variables: the db service gets the Postgres admin settings and the role passwords used by `db/init`, never API keys or app tokens; the api service gets its two DB URLs, the API token, the Anthropic key and the model name | M4a (2026-10-09) | LLM02 |
 | DB roles: `scout_loader` (write), `scout_reader` (read-only, used by the API, agent and MCP; tool queries also run in read-only transactions; no access to `agent_*` on Neon) and `scout_tracer` (SELECT/INSERT on `agent_calls`, INSERT on `agent_violations`, SELECT/INSERT/DELETE on `agent_requests`; nothing else) | M1, M4a, M7 | LLM06, ASI03 |
 | Local: bearer-token auth on every endpoint except `/health` (constant-time compare; no token configured = no access). Public demo: no token, per-IP rate limits instead | M4a, M7 | LLM06 |
-| Per-client-IP rate limits in public mode: `/ask` 5/min and 20/UTC day, tool endpoints 60/min; HTTP 429 + `Retry-After`; client IP = the last `X-Forwarded-For` entry (appended by Google's front end; client-supplied entries ignored); stored only as HMAC-SHA256 with a secret pepper, purged after 48 h; no pepper = requests fail | M7 | LLM10, ASI08 |
+| Per-client-IP rate limits in public mode: `/ask` 5/min and 20/UTC day for valid questions plus 20/min for any request (before validation), tool endpoints 60/min; atomic per client (advisory lock); HTTP 429 + `Retry-After`; client IP = the last `X-Forwarded-For` entry (appended by Google's front end; client-supplied entries ignored; IPv6 per /64; malformed entries share one bucket); stored only as HMAC-SHA256 with a secret pepper, purged after 48 h; no pepper = requests fail | M7 | LLM10, ASI08 |
 | Parameterized SQL; identifiers via `psycopg.sql.Identifier`; CSV columns allow-listed against the schema | M1 | LLM05, ASI02 |
 | Lockfile, pip-audit (the API image's runtime set strictly; all groups with dated exceptions, below), Dependabot (uv, Actions, Docker), CodeQL (python + actions); the API image installs runtime dependencies only (no mlflow, LightGBM, scikit-learn, pyarrow or MCP); Actions pinned by commit SHA and Docker images by digest; new dependencies need approval + registry vetting | M1–M2 | LLM03, ASI04 |
 | Ruleset on `main` (no bypass, since M3): PRs required (squash only); no force-push/deletion; tests, audit, secrets and CodeQL must pass on an up-to-date branch; CodeQL high-severity alerts block merges | M2–M3 | LLM03 |
@@ -106,7 +106,7 @@ Please don't open a public issue. Use GitHub's private vulnerability reporting o
   - `tests/test_evals_replay.py` (CI, no key or DB): the recorded subset must replay with the same grades, injection cases must pass, and no released answer may fail the number check.
   - `mcp==2.2.0`: official SDK (Model Context Protocol, LF Projects), first release 2024-11, ~235M downloads/month; pinned to a release older than two weeks (2.3.0 was 7 days old); pip-audit clean.
 - M5 adds the planted-injection Wikipedia revision and agent-level read-only tests.
-- **Public mode and rate limits (M7):** `tests/test_limits.py`: the client IP is the last `X-Forwarded-For` entry, so spoofed entries don't change the key; the stored key is an HMAC that reveals neither IP nor pepper; no token is needed in public mode; over a limit gives 429 with `Retry-After` on tools and `/ask`; `/health` is never counted; neither the pepper nor the IP appears in logs or responses; a missing pepper fails closed; with the DB: the minute and UTC-day limits, rejected requests not counted, the 48-hour purge, and `scout_reader` refused on `agent_requests`. Neon grants checked with `docs/deploy/neon_verify.sql` (17 rows) after `neon_rate_limits.sql`, tested first on a local Postgres 16 with a non-superuser owner.
+- **Public mode and rate limits (M7):** `tests/test_limits.py`: the client IP is the last `X-Forwarded-For` entry, so spoofed entries don't change the key; the stored key is an HMAC that reveals neither IP nor pepper; no token is needed in public mode; over a limit gives 429 with `Retry-After` on tools and `/ask`; `/health` is never counted; neither the pepper nor the IP appears in logs or responses; a missing pepper fails closed; IPv6 clients share a key per /64, IPv4-mapped addresses count as IPv4, and malformed entries share one bucket; an invalid `/ask` body counts only against the pre-validation bucket and a valid one against both; with the DB: 12 simultaneous checks for one client admit exactly 5 (both directly and through `/ask` with a stubbed model; both tests fail without the advisory lock), 21 invalid `/ask` bodies give 20 × 422 then 429 with nothing counted against the question limits, the minute and UTC-day limits, rejected requests not counted, the 48-hour purge, and `scout_reader` refused on `agent_requests`. Neon grants checked with `docs/deploy/neon_verify.sql` (17 rows) after `neon_rate_limits.sql`, tested first on a local Postgres 16 with a non-superuser owner.
 
 ## Public demo (M7)
 The API runs on Google Cloud Run (`europe-west1`, service `scout`) with the demo-only database on Neon (Frankfurt).
@@ -114,18 +114,44 @@ Open access, no tokens (`PUBLIC_DEMO=true`). MCP stays local (stdio). Limits (ap
 
 | Endpoint | Per client IP | Global |
 |---|---|---|
-| `POST /ask` (calls Claude) | 5 per minute, 20 per UTC day | US$0.50/day spend cap |
+| `POST /ask` (calls Claude) | valid questions: 5 per minute, 20 per UTC day (00:00–24:00 UTC, not a rolling 24 h); every request, valid or not: 20 per minute | US$0.50/day spend cap |
 | Tool endpoints (no LLM) | 60 per minute | Cloud Run at most 2 instances, concurrency 20, 120 s timeout |
 | `/health` | none | — |
+
+Live service settings checked by the owner on 2026-10-21 (`gcloud run services describe`), matching
+`.github/workflows/deploy.yml`: max 2 instances, min 0, concurrency 20, timeout 120 s, 1 CPU, 512 MiB, startup CPU boost on.
+Both counters live in Postgres, not in instance memory: rate limits are rows in `agent_requests`, daily spend is the
+sum of `agent_calls.cost_usd` for the UTC day. They are shared by every instance and survive scale-to-zero and
+instance recycling.
 
 - **Public surface:** `/health` (no database call in public mode), the five tool endpoints, `POST /ask`,
   `/.well-known/security.txt`, and FastAPI's generated `/docs` and `/openapi.json` (`/redoc` is off). Nothing writes project data; requests write only trace rows (`agent_calls`, `agent_violations`)
   and the rate-limit log (`agent_requests`) as `scout_tracer`.
 - **Over a limit:** HTTP 429 with `Retry-After` (60 s, or the seconds to UTC midnight for the daily `/ask` limit).
-  Rejected requests are not counted.
-- **Client IPs:** the app keeps only HMAC-SHA256(IP, pepper), deleted after 48 hours, and never logs the IP or the
-  pepper. uvicorn's access log is off in the container (a local check found it printing the forwarded IP). Cloud Run's own request logs (Google Cloud Logging, owner-only, default 30-day retention) record the client
-  IP, as for any Cloud Run service.
+  Rejected requests are not counted. On `/ask`, every request first counts against a looser pre-validation bucket
+  (20 per minute), so floods of invalid bodies are bounded; only a question that validates then counts against the
+  5-per-minute and 20-per-day limits, so a typo (HTTP 422) doesn't use up one of the day's questions. Tool endpoints
+  count every request.
+- **Atomic counting:** each check-and-count runs in one transaction holding a Postgres advisory lock for its
+  (limit, client) pair, so concurrent requests from one client are counted one at a time and a burst can't overshoot
+  (12 simultaneous requests: exactly 5 admitted, tested).
+- **Client IP assumption (verified 2026-10-21 on the service's run.app URL):** the key is the last
+  `X-Forwarded-For` entry, the one Google's front end appends; entries a client sends itself come before it. Seventy
+  requests with a different spoofed header each shared one counter, while a request from another network was admitted
+  at the same moment. **This breaks behind a load balancer or a custom-domain proxy**, where the last entry is the
+  proxy's address and all clients would share one counter: revisit `scout/api/limits.py` before adding either.
+  IPv6 clients are keyed by their /64 (a subscriber's usual allocation), so rotating addresses inside one /64 doesn't
+  reset the limit; IPv4-mapped addresses count as IPv4. A last entry that isn't an IP address (or no address at all)
+  goes to one shared bucket, so malformed headers can't mint fresh keys (fail closed).
+- **Client IPs and logs:**
+  - The app keeps only HMAC-SHA256(IP, pepper), deleted after 48 hours, and never logs the IP or the pepper.
+    uvicorn's access log is off in the container (a local check found it printing the forwarded IP).
+  - **App logs: no client IPs and no question text** (verified by the owner on 2026-10-21 over two days of every
+    Cloud Run log except the request log; the only IP-like strings were uvicorn's `0.0.0.0` bind line, once per cold
+    start).
+  - **Known limitation, kept for incident response:** Cloud Run's request log records the raw client IP
+    (`httpRequest.remoteIp`); it is owner-only, with Cloud Logging's default 30-day retention.
+  - Admin Activity audit logs record the deploy caller's IP (the GitHub Actions runner), as for any GCP change.
 - **Headers:** the same set as the owner's portfolio site on every response: `Content-Security-Policy`
   (`default-src 'none'; frame-ancestors 'none'`, looser on `/docs` only, for Swagger UI from cdn.jsdelivr.net with
   an inline init script), HSTS, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, `X-Frame-Options: DENY`, COOP.
@@ -138,22 +164,30 @@ Open access, no tokens (`PUBLIC_DEMO=true`). MCP stays local (stdio). Limits (ap
   secrets; the deployer can deploy Cloud Run, push to the `scout` Artifact Registry repository and act as the runtime
   account, and is reachable only from GitHub Actions runs on this repository's `main`. The only third-party action in
   the deploy is `google-github-actions/auth`, pinned by commit SHA.
-- **Budget guards:** US$0.50/day in code, Anthropic workspace limit $10/month, a Cloud Run spend limit and a project
-  budget alert in GCP.
+- **What stops spending** (verified 2026-10-21):
+  1. **App cap, US$0.50 per UTC day** (`DAILY_CAP_USD`), on the server, checked before every model call against the
+     Postgres total shared by all instances; a model without a price fails the request instead of going uncounted.
+     It can overshoot by at most one call per conversation in flight: at most 40 in flight (2 instances ×
+     concurrency 20) × about US$0.003 for a worst-case call (10k input + 4,096 output tokens on `claude-haiku-5-5`)
+     ≈ US$0.12.
+  2. **Anthropic workspace limit, US$10 per month**: a hard stop on Anthropic's side.
+  3. **GCP budgets (R$5) only send alerts.** There is no hard GCP spend limit beyond the trial credit. The trial ends
+     on 2027-01-01; when it ends or the credit runs out, Google stops the resources and charges nothing, so the
+     service goes down (PLAN.md: decision due 2026-12-15).
 - **Data:** the demo database holds the 2,649 demo players, 37,375 Wikipedia passages and revision metadata; no raw
   Kaggle tables and no full Wikipedia revisions.
 
 ## Dependency exceptions
 Advisories ignored in CI's all-groups `pip-audit` because the fixed release is younger than the two-week rule. None is
 in CISA's Known Exploited Vulnerabilities catalogue (checked 2026-10-21), and none is in the API image (its runtime
-set is audited with no ignores). **Expire 2026-11-02**: after that date the CI step fails until they are bumped or
+set is audited with no ignores; CISA KEV re-checked for the later additions the same day). **Expire 2026-11-02**: after that date the CI step fails until they are bumped or
 reviewed again.
 
 | Package (group, via) | Advisory | Fixed in (released) | Why it can wait |
 |---|---|---|---|
 | certifi 2026.7.22 (local, via mlflow → requests) | PYSEC-2026-4320 / GHSA-6q48-6c7w-9gw2: bundles emSign roots with compromised intermediate keys | 2026.10.19 (2026-10-19) | Local tooling only; requests to the affected CAs' sites aren't part of the pipeline |
-| pillow 12.3.0 (dev and local, via matplotlib) | CVE-2026-112395, -112397, -112400, -112404, -112895, -112896, -112897, -112899: decoder bugs (TIFF, JPEG, GIF, EPS, PDF) | 13.0.0 (2026-10-16, a major version) | Only plots our own figures; never opens untrusted images |
-| virtualenv 21.14.5 (dev, via pre-commit) | CVE-2026-113725 / GHSA-vxj4-q4g9-crj7: bash `activate` runs commands from an environment name containing `\$` | 21.14.7 (2026-10-12) | pre-commit names its own environments |
+| pillow 12.3.0 (dev and local, via matplotlib) | 24 advisories (8 on 2026-10-21 at the first audit, 16 more published later that day): CVE-2026-112390, CVE-2026-112391, CVE-2026-112392, CVE-2026-112393, CVE-2026-112395, CVE-2026-112396, CVE-2026-112397, CVE-2026-112399, CVE-2026-112400, CVE-2026-112401, CVE-2026-112402, CVE-2026-112404, CVE-2026-112405, CVE-2026-112406, CVE-2026-112891, CVE-2026-112892, CVE-2026-112893, CVE-2026-112894, CVE-2026-112895, CVE-2026-112896, CVE-2026-112897, CVE-2026-112899, CVE-2026-112900, CVE-2026-112901; decoder bugs (TIFF, JPEG, GIF, EPS, PDF and others) | 13.0.0 (2026-10-16, a major version) | Only plots our own figures; never opens untrusted images |
+| virtualenv 21.14.5 (dev, via pre-commit) | CVE-2026-113725 / GHSA-vxj4-q4g9-crj7 (bash `activate` and an environment name containing `\$`); CVE-2026-113722 / GHSA-c978-59m8-c77v (POSIX console launchers read destination paths as shell syntax) | 21.14.7 (2026-10-12) and 21.14.9 (2026-10-17) | pre-commit creates its own environments under paths it chooses |
 
 Bumped instead (fix older than two weeks): aiohttp 3.14.3 → 3.14.4 (8 advisories), virtualenv 21.14.1 → 21.14.5
 (3 of 4).
@@ -161,7 +195,6 @@ Bumped instead (fix older than two weeks): aiohttp 3.14.3 → 3.14.4 (8 advisori
 ## Known limitations
 - Text documents are written with the loader role. The API and agent will only read them (`scout_reader`).
 - `.claude/settings.json` guards the coding assistant, not the machine: shell commands outside its deny list could still read `.env`. Tools that load `.env` (e.g. `uv --env-file`) may echo malformed lines in warnings (see the incident log).
-- Rate limits are per IP: many IPs (a botnet, or IPv6 rotation) can still use the whole daily spend cap, which then refuses everyone until UTC midnight. The cap bounds the cost, not availability.
-- The rate-limit count and insert are not atomic, so a burst from one IP can overshoot a limit by a few requests.
+- Rate limits are per IP (per /64 for IPv6): many addresses (a botnet, or clients with many /64s) can still use the whole daily spend cap, which then refuses everyone until UTC midnight. The cap bounds the cost, not availability.
 - The number check allows a number if some source number rounds to it, so small derived integers ("under 19" from an age of 18.8) can pass. Evals with an LLM judge (M5) cover derived claims.
 - The rest is completed in M6.
