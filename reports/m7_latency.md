@@ -77,3 +77,23 @@ agent and prompt did not change in #51).
   uv binary (56 MB, 22.1 MB gzipped), unused at runtime except to launch uvicorn, and pandas + numpy (135 MB, 40.2 MB
   gzipped, about 0.44 s of import at 1 CPU), loaded only because `scout.agent.tools` imports `fold` from
   `scout/text/linker.py`, which imports pandas.
+
+## Startup fixes (2026-10-22, PR "M7 slim image")
+Three changes, ranked by the investigation above: pandas and numpy out of the image (`fold()` moved to the stdlib-only
+`scout/text/fold.py`, pandas moved to the local group), uv only at build time (mounted, not copied; uvicorn starts from
+the venv; the project installed non-editable), and bytecode for exactly what startup imports (a build step starts the
+server once as root and calls `/health`; replaces `UV_COMPILE_BYTECODE`). Local rebuilds of each commit, measured the
+same way on the same machine:
+
+| | Before #51 (`e486c33`) | #51 (`2159956`) | This PR |
+|---|---|---|---|
+| Image, uncompressed (Docker's figure) | 484.0 MB | 569.4 MB | **299.3 MB** |
+| Image, gzipped (`docker save \| gzip -1`) | 111.0 MB | 129.4 MB | **65.7 MB** |
+| Filesystem content (`du`) | 332.3 MB | 386.5 MB | **192.6 MB** |
+| Local start to first `/health` (1 CPU, 512 MiB; 3 runs) | 3.66, 4.69, 3.86 s | 2.82, 4.17, 2.82 s | **2.19, 1.95, 2.49 s** |
+| Modules compiled from source at start (`python -v`, runtime user, read-only filesystem) | 765 | 115 | **0** |
+
+- On a read-only filesystem as the runtime user, startup loads 2,371 modules from bytecode and compiles none; the
+  container runs read-only.
+- Not yet measured on Cloud Run: the rollout's "Starting new instance → probe passed" and one cold `/ask` follow the
+  deploy (owner's protocol).

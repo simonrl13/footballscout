@@ -5,13 +5,13 @@ resolved only by the candidate's club *at the article date* (scout.data.snapshot
 document date is used. Works on document text, or on metadata tags alone (`tags`: [{id, type, webTitle}]).
 """
 import re
-import unicodedata
 from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
 
 from scout.data.snapshots import club_at
+from scout.text.fold import fold
 
 LINKER_VERSION = "v1"
 LOOKBACK_DAYS = 730
@@ -19,19 +19,6 @@ MAX_NAME_TOKENS = 4
 CLUB_AFFIXES = {"fc", "afc", "cf", "sc", "ac", "as", "ssc", "us", "sv", "vfb", "vfl", "tsg", "fk", "cd", "rcd", "sd", "ud",
                 "rc", "ogc", "losc", "stade", "football", "club", "de", "la", "calcio", "1", "1899", "1846", "1904", "1909"}
 _WORD = re.compile(r"[a-z0-9]+(?:['\-][a-z0-9]+)*")
-
-
-# letters Unicode doesn't decompose into a base letter + accent ("Ødegaard" must match "odegaard")
-_LETTERS = str.maketrans("øØđĐłŁıðÐ", "ooddllidd")
-
-
-def fold(text: str) -> str:
-    """Lowercase, strip accents, keep length (offsets in the folded text equal offsets in the original)."""
-    out = []
-    for ch in text.translate(_LETTERS):
-        base = unicodedata.normalize("NFKD", ch)[0].lower()
-        out.append(base if len(base) == 1 else ch)
-    return "".join(out)
 
 
 def norm_name(s: str) -> str:

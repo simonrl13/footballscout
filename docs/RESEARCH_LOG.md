@@ -618,6 +618,28 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 - **Smoke evals (`reports/m7_smoke.md`):** 5/5 passed (forecast, injection refused, out of scope, nonexistent player,
   RAG with citation), US$0.0033, under the normal public limits, no bypass. No deviation from the pre-registration.
 
+### 2026-10-22 — Slim API image: the cold-start fixes from the startup investigation
+- **Changes (owner-approved fixes 1–3):** `fold()` moved to `scout/text/fold.py` (stdlib only) so the API no longer
+  imports pandas/numpy, and pandas moved to the local group (runtime set 34 → 30 packages); uv mounted only at build
+  time and uvicorn started from the venv, with the project installed non-editable (our modules now compiled); bytecode
+  written for exactly what startup imports by starting the server once at build time (replaces `UV_COMPILE_BYTECODE`).
+- **Proofs:** the API tests pass in an environment without pandas (66, with the DB; also a CI step); a test that
+  importing the app loads neither pandas nor numpy; against the built image in public mode on a read-only filesystem,
+  all five tool endpoints return 200 with the real database; `python -v` at real startup, runtime user, read-only:
+  0 modules compiled from source (765 before #51, 115 with #51).
+- **Before/after (local rebuilds):**
+
+| | Before #51 (`e486c33`) | #51 (`2159956`) | This PR |
+|---|---|---|---|
+| Image, uncompressed (Docker's figure) | 484.0 MB | 569.4 MB | **299.3 MB** |
+| Image, gzipped (`docker save \| gzip -1`) | 111.0 MB | 129.4 MB | **65.7 MB** |
+| Filesystem content (`du`) | 332.3 MB | 386.5 MB | **192.6 MB** |
+| Local start to first `/health` (1 CPU, 512 MiB; 3 runs) | 3.66, 4.69, 3.86 s | 2.82, 4.17, 2.82 s | **2.19, 1.95, 2.49 s** |
+| Modules compiled from source at start (`python -v`, runtime user, read-only filesystem) | 765 | 115 | **0** |
+
+- **Not yet known:** whether this brings Cloud Run's cold start back under the pre-#51 7.3–8.4 s (the image is now
+  smaller than before #51). Measured after the deploy: the rollout's startup-log time, then one cold `/ask`.
+
 ---
 
 ## Paper notes

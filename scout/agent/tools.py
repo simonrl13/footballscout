@@ -15,7 +15,7 @@ from psycopg import sql
 from psycopg.rows import dict_row
 from pydantic import BaseModel, ConfigDict, Field
 
-from scout.text.linker import fold
+from scout.text.fold import fold
 
 DEMO_AS_OF = "2026-06-12"
 LEAGUE_NAMES = {"GB1": "Premier League", "ES1": "LaLiga", "L1": "Bundesliga", "IT1": "Serie A", "FR1": "Ligue 1",
