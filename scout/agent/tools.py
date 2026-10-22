@@ -189,6 +189,11 @@ TEXT_SQL = """
     LIMIT %(limit)s"""
 
 
+def data_as_of(conn) -> str:
+    """The date of the loaded demo data (the page shows it; read from the data, not a constant)."""
+    return str(conn.execute("SELECT max(as_of) AS as_of FROM demo_players").fetchone()["as_of"])
+
+
 def search_text(conn, a: TextSearch) -> dict:
     words = re.findall(r"[^\W_]+", a.query)[:20]  # plain words only: no search operators reach the query parser
     if not words:

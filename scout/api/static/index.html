@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F1A2B">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ECE4D3">
+<meta name="description" content="Ask about football players' Transfermarkt market values and a model's 12-month forecast.">
+<title>Scout demo</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<script type="module" src="/static/app.mjs"></script>
+</head>
+<body>
+<main class="page">
+  <header>
+    <p class="label">AI demo</p>
+    <h1>Scout</h1>
+    <p class="lede">Ask about football players' Transfermarkt market values and a model's 12-month forecast, in 7 European leagues.</p>
+    <p class="muted" id="as-of"></p>
+  </header>
+
+  <form id="ask" novalidate>
+    <label for="question" class="visually-hidden">Your question</label>
+    <textarea id="question" name="question" rows="3" maxlength="500" placeholder="Ask about a player…" enterkeyhint="send" required></textarea>
+    <div class="row">
+      <span class="muted" id="count">0/500</span>
+      <button type="submit" id="send">Ask</button>
+    </div>
+  </form>
+
+  <section class="examples" aria-label="Example questions">
+    <p class="muted">Try:</p>
+    <button type="button" class="chip" data-example>What does the model forecast for Florian Wirtz's market value over the next 12 months?</button>
+    <button type="button" class="chip" data-example>Compare the forecasts for Jamal Musiala and Florian Wirtz.</button>
+    <button type="button" class="chip" data-example>According to Wikipedia, when did Jude Bellingham join Real Madrid?</button>
+    <button type="button" class="chip" data-example>What does the model forecast for Harry Kane's market value?</button>
+  </section>
+
+  <p class="status" id="status" role="status" aria-live="polite"></p>
+  <article class="answer" id="answer" aria-live="polite" hidden></article>
+
+  <footer>
+    <p>Market values are crowd estimates, not transfer fees.</p>
+    <p>Limits: 5 questions a minute and 20 a day per connection (the day resets at midnight UTC).</p>
+    <p>Data: Transfermarkt via a CC0 dataset · Wikipedia text under CC BY-SA 4.0 ·
+      <a href="https://github.com/simonrl13/footballscout" rel="noopener noreferrer">Source code on GitHub</a></p>
+  </footer>
+</main>
+</body>
+</html>

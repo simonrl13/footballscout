@@ -102,6 +102,12 @@ def sources_footer(answer: str, citations: dict) -> str:
     return "\n".join(lines + [LICENSE])
 
 
+def source_list(used: dict) -> list[dict]:
+    """The cited passages as structured fields (the demo page builds its links from these, never from answer text)."""
+    return [{"ref": n, "player": p["player"], "revision_date": p["revision_date"], "revision_url": p["revision_url"],
+             "history_url": p["page_history"]} for n, p in used.items()]
+
+
 def cost_usd(model: str, usage: dict) -> float:
     read, write = usage.get("cache_read_input_tokens") or 0, usage.get("cache_creation_input_tokens") or 0
     pin, pout = prices(model, usage.get("input_tokens", 0) + read + write)  # KeyError without a price: the cap needs one
@@ -208,11 +214,12 @@ def run(question: str, client, tracer, db, model: str | None = None, use_cache: 
                                                                        "players' market values or forecasts."}
             return
         answer = "".join(b["text"] for b in resp["content"] if b["type"] == "text").strip()
-        bad, cite = unsupported(REF.sub("", answer), sources), citation_problems(answer, citations)  # refs aren't claims
+        shown, used = renumber_refs(answer, citations)  # the body the user sees (refs renumbered in code)
+        bad, cite = unsupported(REF.sub("", shown), sources), citation_problems(answer, citations)  # refs aren't claims
         if not bad and not cite:
-            shown, used = renumber_refs(answer, citations)
-            yield {"type": "answer", "conversation_id": cid, "text": shown + sources_footer(shown, used),
-                   "cost_usd": round(total, 6), "citations": len(used)}
+            # text: body + sources footer (evals, CLI); body + sources: the same, structured, for the demo page
+            yield {"type": "answer", "conversation_id": cid, "text": shown + sources_footer(shown, used), "body": shown,
+                   "sources": source_list(used), "cost_usd": round(total, 6), "citations": len(used)}
             return
         action, feedback = "blocked" if retried else "retried", []
         if bad:
