@@ -175,14 +175,14 @@ instance recycling.
 ## Dependency exceptions
 Advisories ignored in CI's all-groups `pip-audit` because the fixed release is younger than the two-week rule. None is
 in CISA's Known Exploited Vulnerabilities catalogue (checked 2026-10-21), and none is in the API image (its runtime
-set is audited with no ignores). **Expire 2026-11-02**: after that date the CI step fails until they are bumped or
+set is audited with no ignores; CISA KEV re-checked for the later additions the same day). **Expire 2026-11-02**: after that date the CI step fails until they are bumped or
 reviewed again.
 
 | Package (group, via) | Advisory | Fixed in (released) | Why it can wait |
 |---|---|---|---|
 | certifi 2026.7.22 (local, via mlflow → requests) | PYSEC-2026-4320 / GHSA-6q48-6c7w-9gw2: bundles emSign roots with compromised intermediate keys | 2026.10.19 (2026-10-19) | Local tooling only; requests to the affected CAs' sites aren't part of the pipeline |
-| pillow 12.3.0 (dev and local, via matplotlib) | CVE-2026-112395, -112397, -112400, -112404, -112895, -112896, -112897, -112899: decoder bugs (TIFF, JPEG, GIF, EPS, PDF) | 13.0.0 (2026-10-16, a major version) | Only plots our own figures; never opens untrusted images |
-| virtualenv 21.14.5 (dev, via pre-commit) | CVE-2026-113725 / GHSA-vxj4-q4g9-crj7: bash `activate` runs commands from an environment name containing `\$` | 21.14.7 (2026-10-12) | pre-commit names its own environments |
+| pillow 12.3.0 (dev and local, via matplotlib) | 24 advisories (8 on 2026-10-21 at the first audit, 16 more published later that day): CVE-2026-112390, CVE-2026-112391, CVE-2026-112392, CVE-2026-112393, CVE-2026-112395, CVE-2026-112396, CVE-2026-112397, CVE-2026-112399, CVE-2026-112400, CVE-2026-112401, CVE-2026-112402, CVE-2026-112404, CVE-2026-112405, CVE-2026-112406, CVE-2026-112891, CVE-2026-112892, CVE-2026-112893, CVE-2026-112894, CVE-2026-112895, CVE-2026-112896, CVE-2026-112897, CVE-2026-112899, CVE-2026-112900, CVE-2026-112901; decoder bugs (TIFF, JPEG, GIF, EPS, PDF and others) | 13.0.0 (2026-10-16, a major version) | Only plots our own figures; never opens untrusted images |
+| virtualenv 21.14.5 (dev, via pre-commit) | CVE-2026-113725 / GHSA-vxj4-q4g9-crj7 (bash `activate` and an environment name containing `\$`); CVE-2026-113722 / GHSA-c978-59m8-c77v (POSIX console launchers read destination paths as shell syntax) | 21.14.7 (2026-10-12) and 21.14.9 (2026-10-17) | pre-commit creates its own environments under paths it chooses |
 
 Bumped instead (fix older than two weeks): aiohttp 3.14.3 → 3.14.4 (8 advisories), virtualenv 21.14.1 → 21.14.5
 (3 of 4).

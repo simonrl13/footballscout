@@ -30,9 +30,17 @@ jobs:
       # (SECURITY.md, "Dependency exceptions"); none is in CISA's KEV list. The step fails once the ignores expire.
       - run: uv export --frozen --format requirements-txt --no-emit-project --all-groups -o requirements-audit.txt
       - name: Audit all groups (ignores expire 2026-11-02)
+        env:
+          IGNORE: >-
+            PYSEC-2026-4320
+            CVE-2026-112390 CVE-2026-112391 CVE-2026-112392 CVE-2026-112393 CVE-2026-112395 CVE-2026-112396
+            CVE-2026-112397 CVE-2026-112399 CVE-2026-112400 CVE-2026-112401 CVE-2026-112402 CVE-2026-112404
+            CVE-2026-112405 CVE-2026-112406 CVE-2026-112891 CVE-2026-112892 CVE-2026-112893 CVE-2026-112894
+            CVE-2026-112895 CVE-2026-112896 CVE-2026-112897 CVE-2026-112899 CVE-2026-112900 CVE-2026-112901
+            CVE-2026-113722 CVE-2026-113725
         run: |
           if [ "$(date -u +%F)" \> 2026-11-02 ]; then echo "pip-audit ignores expired: bump or review them"; exit 1; fi
-          uvx pip-audit -r requirements-audit.txt --disable-pip --strict             --ignore-vuln PYSEC-2026-4320             --ignore-vuln CVE-2026-112395 --ignore-vuln CVE-2026-112397 --ignore-vuln CVE-2026-112400             --ignore-vuln CVE-2026-112404 --ignore-vuln CVE-2026-112895 --ignore-vuln CVE-2026-112896             --ignore-vuln CVE-2026-112897 --ignore-vuln CVE-2026-112899             --ignore-vuln CVE-2026-113725
+          uvx pip-audit -r requirements-audit.txt --disable-pip --strict $(printf -- '--ignore-vuln %s ' $IGNORE)
 
   secrets:
     runs-on: ubuntu-latest

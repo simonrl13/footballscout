@@ -583,6 +583,9 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
   raw IP (owner-only, 30 days): known limitation, kept for incident response. Audit logs hold the deployer's IP.
 - **422s:** invalid `/ask` bodies were counted (the limit ran as a dependency, before validation), so five typos cost a
   minute and a quarter of a day's questions. Now `/ask` is counted after validation; tool endpoints still count all.
+- **Dependency audit (same day):** 17 more advisories were published after #50 merged (16 pillow, 1 virtualenv), all
+  fixed only in releases younger than two weeks and none in CISA KEV; added to the dated ignores under the owner's
+  rule (27 in all, expiring 2026-11-02; SECURITY.md "Dependency exceptions"). The runtime set stays clean.
 - **Smoke evals:** pre-registered in PLAN.md (5 questions, `scout/evals/smoke.jsonl`, normal limits, no bypass) and
   committed before any run; results in a separate entry.
 
