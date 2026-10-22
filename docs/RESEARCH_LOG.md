@@ -666,6 +666,19 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
   under the pre-registration; no change to the check after seeing the answer. Options for the owner: pre-register a
   revised check (e.g. "the forecast numbers are quoted", which already passed), or leave the set as is.
 
+### 2026-10-22 — PRE-REGISTRATION: revised smoke forecast check (future runs only; past results stand)
+- **Why it changes:** the 2026-10-22 rerun after the demo page failed `sm-forecast` on its `tools` check although
+  the answer was correct. The check assumed a forecast can only come from `predict_value_change`; `search_players`
+  has returned `predicted_change_pct` and `interval_80_pct` since M4a, and the model may answer from it. The
+  assumption was found in that run, so the revision is written down before any further run.
+- **New check** (details in docs/PLAN.md, M7 smoke evals): (a) the predicted change and both 80% interval bounds in
+  the answer match `predict_value_change` for the player, values computed by the eval at run time; (b) the stream
+  shows a `search_players` or `predict_value_change` call whose recomputed result contains those three values;
+  (c) `outcome`, `quote` and `interval` unchanged. The tool-path requirement is removed.
+- **Not changed:** the question, the other four cases, the protocol, the decision rule.
+- **Past results stand:** run 1 5/5, run 2 4/5 (recorded as 4/5 on the owner's decision). Neither is regraded.
+- **Next:** implement and unit-test the check in its own PR; no smoke run until the owner asks.
+
 ---
 
 ## Paper notes
