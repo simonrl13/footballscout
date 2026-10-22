@@ -297,7 +297,8 @@ limit **$10/month** (owner, Anthropic Console), GCP budget alert at **$1** (owne
 
   Counted in Postgres (`agent_requests`, written by `scout_tracer`): the client IP stored only as
   HMAC-SHA256(IP, pepper from Secret Manager), rows purged after 48 h. The client IP is taken from the
-  `X-Forwarded-For` entry Google's front end adds, not a client-supplied one (to verify against Cloud Run docs).
+  `X-Forwarded-For` entry Google's front end adds, not a client-supplied one (not in Cloud Run's docs; verified on the
+  deployed service on 2026-10-21: the last entry, SECURITY.md).
   Over the limit: HTTP 429 with `Retry-After`.
 - **Before anything is public** (all must be done and merged):
   - [x] per-IP rate limits + public mode, with tests (`scout/api/limits.py`, `tests/test_limits.py`) (limits, 429s, spoofed `X-Forwarded-For`, pepper never logged)
