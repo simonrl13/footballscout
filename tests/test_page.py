@@ -1,6 +1,7 @@
 """The demo page: served with its own strict CSP, no inline code, no HTML sinks in its scripts, phone-safe basics.
 The page logic itself (escaping, link allow-list, waking notice, limits) is tested by node --test (tests/js)."""
 import re
+from html.parser import HTMLParser
 
 import pytest
 from fastapi.testclient import TestClient
@@ -42,12 +43,35 @@ def test_meta_gives_the_data_date_and_needs_the_token_like_other_data(client):
     assert "2026-06-12" not in PAGE + "".join(SCRIPTS.values())  # the page reads the date from the API
 
 
+class Inventory(HTMLParser):
+    """Every tag with its attributes, and any text inside <script> or <style>, read by the stdlib HTML parser."""
+
+    def __init__(self):
+        super().__init__()
+        self.tags, self.inline, self._open = [], [], None
+
+    def handle_starttag(self, tag, attrs):
+        self.tags.append((tag, dict(attrs)))
+        self._open = tag if tag in ("script", "style") else None
+
+    def handle_endtag(self, tag):
+        self._open = None
+
+    def handle_data(self, data):
+        if self._open and data.strip():
+            self.inline.append(self._open)
+
+
 def test_page_has_no_inline_code():
-    scripts = re.findall(r"<script\b([^>]*)>(.*?)</script>", PAGE, re.S)
-    assert scripts and all('src="/static/' in attrs and not body.strip() for attrs, body in scripts)
-    assert not re.search(r"\son[a-z]+\s*=", PAGE, re.I)  # no inline event handlers
-    assert not re.search(r"\sstyle\s*=|<style", PAGE, re.I)
-    assert not re.search(r"(src|href)\s*=\s*[\"']?(https?:)?//(?!github\.com/simonrl13/)", PAGE)  # nothing third-party
+    page = Inventory()
+    page.feed(PAGE)
+    scripts = [attrs for tag, attrs in page.tags if tag == "script"]
+    assert scripts and all(a.get("src", "").startswith("/static/") for a in scripts)
+    assert page.inline == [] and not any(tag == "style" for tag, _ in page.tags)  # no inline script or style
+    attrs = [(name, value or "") for _, a in page.tags for name, value in a.items()]
+    assert not any(name.startswith("on") or name == "style" for name, _ in attrs)  # no handlers, no style attributes
+    external = [v for name, v in attrs if name in ("src", "href") and not v.startswith("/static/")]
+    assert external == ["https://github.com/simonrl13/footballscout"]  # nothing third-party loaded; one plain link
 
 
 def test_scripts_use_no_html_sinks():
