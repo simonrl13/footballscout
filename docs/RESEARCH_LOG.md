@@ -610,6 +610,8 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
     hypothesis, unproven. Fix options ranked by size in the report; none applied yet.
   - **Decision: no `min-instances`.** An always-on instance would cost more than the project's GCP budget allows; a
     cold start stays about 20 s, which the docs state.
+  - Dependency audit (2026-10-22): 13 new advisories in the local group, none in CISA KEV. opentelemetry-api bumped
+    (fix 16 days old); gitpython 1 and pillow 11 added to the dated ignores (fixes 8 and 6 days old), 39 in all.
   - Warm: median 6.6 s (n = 5), model calls 82% of it; the same 5 questions took 14 model calls against 12 before
     (two different tool paths, one number-check retry), model variation rather than a code change. No regression
     claimed and no comparison with the 6 s target at n = 5.

@@ -38,6 +38,9 @@ jobs:
             CVE-2026-112405 CVE-2026-112406 CVE-2026-112891 CVE-2026-112892 CVE-2026-112893 CVE-2026-112894
             CVE-2026-112895 CVE-2026-112896 CVE-2026-112897 CVE-2026-112899 CVE-2026-112900 CVE-2026-112901
             CVE-2026-113722 CVE-2026-113725
+            CVE-2026-96636 CVE-2026-96637 CVE-2026-96638 CVE-2026-96639 CVE-2026-96640 CVE-2026-96641
+            CVE-2026-96642 CVE-2026-96643 CVE-2026-96644 CVE-2026-96778 GHSA-78g4-xqwv-q3g8
+            CVE-2026-114145
         run: |
           if [ "$(date -u +%F)" \> 2026-11-02 ]; then echo "pip-audit ignores expired: bump or review them"; exit 1; fi
           uvx pip-audit -r requirements-audit.txt --disable-pip --strict $(printf -- '--ignore-vuln %s ' $IGNORE)
