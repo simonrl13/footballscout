@@ -11,3 +11,4 @@ node_modules/
 mlartifacts/
 mlruns/
 data/demo/
+.venv-*/

@@ -2407,7 +2407,6 @@ source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
     { name = "fastapi" },
-    { name = "pandas" },
     { name = "psycopg", extra = ["binary"] },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -2424,6 +2423,7 @@ local = [
     { name = "lightgbm" },
     { name = "mcp" },
     { name = "mlflow" },
+    { name = "pandas" },
     { name = "pyarrow" },
     { name = "scikit-learn" },
 ]
@@ -2432,7 +2432,6 @@ local = [
 requires-dist = [
     { name = "anthropic", specifier = ">=1.11.0" },
     { name = "fastapi", specifier = ">=0.115" },
-    { name = "pandas", specifier = ">=3.0.6" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
 ]
@@ -2449,6 +2448,7 @@ local = [
     { name = "lightgbm", specifier = ">=4.7.0" },
     { name = "mcp", specifier = "==2.2.0" },
     { name = "mlflow", specifier = ">=3.16.1" },
+    { name = "pandas", specifier = ">=3.0.6" },
     { name = "pyarrow", specifier = ">=25.0.1" },
     { name = "scikit-learn", specifier = ">=1.9.1" },
 ]
