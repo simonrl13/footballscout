@@ -341,7 +341,7 @@ limit **$10/month** (owner, Anthropic Console), GCP budget alert at **$1** (owne
   for exactly what startup imports. After the deploy: the rollout's "Starting new instance → probe passed" from Cloud
   Run's startup logs (owner) against 7.3–8.4 s before #51 and 12.9–15.4 s with #51, then one cold `/ask` after 30+
   idle minutes with the stage breakdown; nothing else uses quota.
-- [ ] Minimal public demo page (plan approved 2026-10-22; PR "M7 demo page"): `GET /`, plain HTML/CSS/JS, own CSP,
+- [x] Minimal public demo page (plan approved 2026-10-22; #55, deployed 2026-10-22; smoke rerun 4/5, see RESEARCH_LOG; phone check: owner): `GET /`, plain HTML/CSS/JS, own CSP,
   text-only rendering of model output, Wikipedia-only source links from structured fields, waking notice after 5 s,
   429 explained; owner checks it on a real phone. After merge and deploy: rerun the 5 pre-registered smoke questions
   (not the held-out set) and report.

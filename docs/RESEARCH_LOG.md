@@ -655,6 +655,17 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
   next to the link; the planned demo page shows it after 5 s without an event). No `min-instances` (cost). No further
   latency work.
 
+### 2026-10-22 — Demo page deployed; smoke evals rerun: 4/5 (a mis-specified check, not a wrong answer)
+- **Deploy:** #55 (`953862b`): the page, its files and `/meta` served in production with the page CSP; `/meta`
+  returns `2026-06-12` from the loaded data.
+- **Smoke rerun** (the 5 pre-registered questions, normal limits, no bypass; the held-out set not run), US$0.0032:
+  4/5 (`reports/m7_smoke_2026-10-22_page.md`; the first run, 5/5, stays in `reports/m7_smoke.md`).
+- **The failure:** `sm-forecast` failed its `tools` check (`predict_value_change` not called). The answer is correct:
+  `search_players` already returns `predicted_change_pct` and `interval_80_pct` (since M4a), and the answer's
+  figures equal `predict_value_change`'s exactly. The check encoded an assumption the tools don't hold. Kept at 4/5
+  under the pre-registration; no change to the check after seeing the answer. Options for the owner: pre-register a
+  revised check (e.g. "the forecast numbers are quoted", which already passed), or leave the set as is.
+
 ---
 
 ## Paper notes
