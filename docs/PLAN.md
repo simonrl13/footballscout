@@ -291,7 +291,7 @@ limit **$10/month** (owner, Anthropic Console), GCP budget alert at **$1** (owne
 
   | Endpoint | Per IP | Global |
   |---|---|---|
-  | `POST /ask` (calls Claude) | 5 per minute, 20 per day | US$0.50/day spend cap (existing check) |
+  | `POST /ask` (calls Claude) | 5 per minute, 20 per UTC day (valid questions); 20 per minute for any request, before validation (added 2026-10-22, owner review) | US$0.50/day spend cap (existing check) |
   | Tool endpoints (no LLM) | 60 per minute | Cloud Run max 2 instances |
   | `/health` | none | — |
 
@@ -317,7 +317,10 @@ limit **$10/month** (owner, Anthropic Console), GCP budget alert at **$1** (owne
 - [ ] README with the live link (**only when the owner says so**; until then the URL is in no repository file)
 - [x] Owner review of the deploy (2026-10-21): counters, spend layers, latency, client IP, logs, 422s
   (`docs/RESEARCH_LOG.md`, `reports/m7_latency.md`); fixes in PR "M7 review fixes"
-- [ ] Re-measure cold and warm latency after the review fixes are deployed (same protocol as `reports/m7_latency.md`)
+- [ ] After the review fixes are deployed, in this order (owner, 2026-10-22), from one client within one UTC day
+  (11 valid questions of the 20 allowed, starts at least 16 s apart): (1) one cold request after at least 30 minutes
+  without traffic; (2) 5 warm requests (same stage breakdown as `reports/m7_latency.md`); (3) the 5 smoke questions
+  below.
 - [ ] Production smoke evals (pre-registered 2026-10-21, before any run; replaces "the CI subset against the deployed
   URL", which would need cached responses the deployed API doesn't have):
   - **Set:** `scout/evals/smoke.jsonl`, 5 questions written for it, separate from the dev, held-out and text sets, all

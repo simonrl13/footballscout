@@ -33,4 +33,5 @@ above, so no gain is credited to it. `min-instances=1` was not adopted: an alway
 project budget. The re-measurement after the fixes are deployed is added below with the same protocol.
 
 ## After the fixes
-Not measured yet (needs the deploy of the fixes).
+Not measured yet. Protocol (PLAN.md): one cold request after at least 30 idle minutes, then 5 warm
+requests, then the smoke set, all from one client within one UTC day.

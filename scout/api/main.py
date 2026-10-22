@@ -78,12 +78,12 @@ def admit(request: Request, kind: str) -> None:
         raise HTTPException(429, "rate limit exceeded, please try again later", headers={"Retry-After": str(wait)})
 
 
-def access(kind: str | None):
-    """Private mode: the bearer token. Public mode: the rate limit for `kind` (None: counted in the endpoint)."""
+def access(kind: str):
+    """Private mode: the bearer token. Public mode: the rate limit for `kind`."""
     def check(request: Request, cred: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]) -> None:
         if not public():
             authorized(cred)
-        elif kind:
+        else:
             admit(request, kind)
     return Depends(check)
 
@@ -93,7 +93,9 @@ def db():
         yield conn
 
 
-Auth, AskAuth = access("tools"), access(None)  # /ask is counted after its body validates: typos (422) cost nothing
+# /ask: every request counts against the looser ask_raw bucket (before validation, bounds floods of 422s); only a
+# valid question counts against the 5/min and 20/day limits (in the endpoint), so typos cost no daily questions
+Auth, AskAuth = access("tools"), access("ask_raw")
 DB = Annotated[psycopg.Connection, Depends(db)]
 PlayerIdPath = Annotated[int, Path(ge=1, le=10**8)]
 

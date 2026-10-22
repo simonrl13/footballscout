@@ -3,6 +3,8 @@ import contextlib
 import logging
 import os
 import secrets
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import psycopg
 import pytest
@@ -20,13 +22,19 @@ def test_client_ip_is_the_entry_googles_front_end_appends():
     assert limits.client_ip({}, "10.0.0.1") == "10.0.0.1"
 
 
+def test_malformed_entries_share_one_fail_closed_bucket():
+    for bad in ["not-an-ip", "1.2.3.4.5", "6.6.6.6, unknown", "2001:db8::1::2", "<script>"]:
+        assert limits.client_ip({"x-forwarded-for": bad}, "10.0.0.1") == limits.MALFORMED, bad
+    assert limits.client_ip({}, None) == limits.MALFORMED  # no header and no peer: same bucket
+    assert limits.client_ip({"x-forwarded-for": "6.6.6.6, 203.0.113.9"}, None) != limits.MALFORMED
+
+
 def test_ipv6_clients_are_keyed_by_their_64():
     a = limits.client_ip({"x-forwarded-for": "2001:db8:1:2:aaaa::1"}, None)
     assert a == "2001:db8:1:2::/64"
     assert limits.client_ip({"x-forwarded-for": "6.6.6.6, 2001:db8:1:2:ffff:ffff:ffff:ffff"}, None) == a  # same /64
     assert limits.client_ip({"x-forwarded-for": "2001:db8:1:3::1"}, None) != a  # next /64: another client
     assert limits.client_ip({"x-forwarded-for": "::ffff:203.0.113.9"}, None) == "203.0.113.9"  # IPv4-mapped
-    assert limits.client_ip({"x-forwarded-for": "not-an-ip"}, None) == "not-an-ip"  # kept as is, still hashed
 
 
 def test_ip_hash_is_keyed_and_reveals_neither_ip_nor_pepper(monkeypatch):
@@ -75,7 +83,7 @@ def test_over_the_limit_is_429_with_retry_after(public):
     r = client.get("/players/7")
     assert r.status_code == 429 and r.headers["Retry-After"] == "42"
     assert client.post("/ask", json={"question": "Who is Kane?"}).status_code == 429
-    assert seen[-1][1] == "ask"
+    assert seen[-1][1] == "ask_raw"  # stopped by the pre-validation bucket
     n = len(seen)
     assert client.get("/health").status_code == 200 and len(seen) == n  # /health is never counted or limited
 
@@ -149,9 +157,16 @@ def test_container_has_no_access_log():
     assert '"--no-access-log"' in (ROOT / "Dockerfile").read_text(encoding="utf-8")
 
 
-def test_public_health_never_touches_the_database(public, monkeypatch):
+def _fail(*a, **k):
+    raise AssertionError("must not be called")
+
+
+def test_public_health_touches_neither_the_database_nor_anthropic(public, monkeypatch):
+    import anthropic
     client, seen = public
-    monkeypatch.setattr(main.psycopg, "connect", lambda *a, **k: (_ for _ in ()).throw(AssertionError("DB call")))
+    monkeypatch.setattr(main.psycopg, "connect", _fail)
+    monkeypatch.setattr(tools, "connect", _fail)
+    monkeypatch.setattr(anthropic, "Anthropic", _fail)
     assert client.get("/health").json() == {"status": "ok"} and not seen
 
 
@@ -166,32 +181,92 @@ def test_security_headers_and_security_txt(public):
     assert client.get("/redoc").status_code == 404
 
 
-def test_ask_answers_carry_the_ai_notice(public, monkeypatch):
+def stub_agent(monkeypatch):
+    """The agent with no model, no tracer and no reader: one tool_call event, then an answer."""
     import anthropic
 
     from scout.agent import agent
-    client, seen = public
-    monkeypatch.setattr(anthropic, "Anthropic", lambda: None)
+
     class FakeConn:
         def close(self):
             pass
 
     class FakeTracer:
         conn = FakeConn()
-    monkeypatch.setattr(agent, "Tracer", FakeTracer)
-    monkeypatch.setattr(tools, "connect", contextlib.nullcontext)
 
     def fake_run(question, client, tracer, db):
         yield {"type": "tool_call", "name": "x", "input": {}}
         yield {"type": "answer", "text": "Hi"}
+    monkeypatch.setattr(anthropic, "Anthropic", lambda: None)
+    monkeypatch.setattr(agent, "Tracer", FakeTracer)
     monkeypatch.setattr(agent, "run", fake_run)
+    monkeypatch.setattr(tools, "connect", contextlib.nullcontext)
+
+
+def test_ask_answers_carry_the_ai_notice(public, monkeypatch):
+    client, seen = public
+    stub_agent(monkeypatch)
     body = client.post("/ask", json={"question": "Who is Kane?"}).text
     assert body.count(main.AI_NOTICE) == 1 and '"type": "answer"' in body
-    assert seen == [(limits.ip_hash("testclient"), "ask")]  # a valid question is counted once
+    key = limits.ip_hash(limits.MALFORMED)  # TestClient's peer "testclient" isn't an IP address
+    assert seen == [(key, "ask_raw"), (key, "ask")]  # a valid question: the loose bucket, then the real limits
 
 
-def test_invalid_questions_are_not_counted(public):
+def test_invalid_questions_count_only_against_the_loose_bucket(public):
     client, seen = public
     for body in [{"question": "x"}, {"question": "y" * 501}, {"query": "Kane"}, None]:
         assert client.post("/ask", json=body).status_code == 422
-    assert seen == []
+    assert [kind for _, kind in seen] == ["ask_raw"] * 4
+    seen.wait = 60  # the loose bucket full: a flood of invalid bodies gets 429, not 422
+    assert client.post("/ask", json={"question": "x"}).status_code == 429
+
+
+def test_concurrent_checks_never_overshoot(tracer):
+    """12 simultaneous checks for one key, each on its own connection: exactly 5 pass (the advisory lock)."""
+    _, key = tracer
+    conns = [_tracer() for _ in range(12)]
+    start = threading.Barrier(12)
+
+    def one(conn):
+        start.wait()
+        return limits.check(conn, key, "ask")
+    try:
+        with ThreadPoolExecutor(12) as pool:
+            results = list(pool.map(one, conns))
+    finally:
+        for c in conns:
+            c.close()
+    assert results.count(None) == 5 and results.count(60) == 7
+
+
+@pytest.fixture
+def public_db(monkeypatch):
+    """Public mode against the real tracer database (the limits are real), with the agent stubbed (no model)."""
+    conn = _tracer()
+    monkeypatch.setenv("PUBLIC_DEMO", "true")
+    monkeypatch.setenv("RATE_LIMIT_PEPPER", PEPPER)
+    stub_agent(monkeypatch)
+    ip = f"198.51.100.{secrets.randbelow(250) + 1}"
+    yield TestClient(main.app), {"X-Forwarded-For": f"6.6.6.6, {ip}"}, conn, limits.ip_hash(ip)
+    conn.execute("DELETE FROM agent_requests WHERE ip_hash = %s", (limits.ip_hash(ip),))
+    conn.close()
+
+
+def test_burst_of_ask_requests_lets_at_most_5_through(public_db):
+    client, headers, _, _ = public_db
+    start = threading.Barrier(12)
+
+    def one(_):
+        start.wait()
+        return client.post("/ask", json={"question": "Who is Kane?"}, headers=headers).status_code
+    with ThreadPoolExecutor(12) as pool:
+        codes = list(pool.map(one, range(12)))
+    assert codes.count(200) == 5 and codes.count(429) == 7
+
+
+def test_flood_of_invalid_asks_is_bounded_and_spares_the_daily_quota(public_db):
+    client, headers, conn, key = public_db
+    codes = [client.post("/ask", json={"question": "x"}, headers=headers).status_code for _ in range(21)]
+    assert codes == [422] * 20 + [429]
+    rows = dict(conn.execute("SELECT kind, count(*) FROM agent_requests WHERE ip_hash = %s GROUP BY kind", (key,)).fetchall())
+    assert rows == {"ask_raw": 20}  # nothing against the 5/min and 20/day question limits

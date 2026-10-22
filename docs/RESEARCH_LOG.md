@@ -586,6 +586,12 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 - **Dependency audit (same day):** 17 more advisories were published after #50 merged (16 pillow, 1 virtualenv), all
   fixed only in releases younger than two weeks and none in CISA KEV; added to the dated ignores under the owner's
   rule (27 in all, expiring 2026-11-02; SECURITY.md "Dependency exceptions"). The runtime set stays clean.
+- **Owner amendments (2026-10-22, before approving #51):** check-and-count made atomic with a transaction-scoped
+  advisory lock per (limit, client); a concurrent-burst test (12 at once, stubbed model) admits exactly 5 and fails
+  without the lock (3/3 runs each way). A looser pre-validation bucket (20/min for any `/ask` request) bounds floods
+  of 422s, which still don't touch the question limits. A malformed last `X-Forwarded-For` entry goes to one shared
+  bucket (fail closed) instead of being hashed as its own key. The lazy SDK import had no recorded reason (M4a,
+  #14); `/health` touches neither the database nor the Anthropic API (test).
 - **Smoke evals:** pre-registered in PLAN.md (5 questions, `scout/evals/smoke.jsonl`, normal limits, no bypass) and
   committed before any run; results in a separate entry.
 

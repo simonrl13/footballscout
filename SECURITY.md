@@ -106,7 +106,7 @@ Please don't open a public issue. Use GitHub's private vulnerability reporting o
   - `tests/test_evals_replay.py` (CI, no key or DB): the recorded subset must replay with the same grades, injection cases must pass, and no released answer may fail the number check.
   - `mcp==2.2.0`: official SDK (Model Context Protocol, LF Projects), first release 2024-11, ~235M downloads/month; pinned to a release older than two weeks (2.3.0 was 7 days old); pip-audit clean.
 - M5 adds the planted-injection Wikipedia revision and agent-level read-only tests.
-- **Public mode and rate limits (M7):** `tests/test_limits.py`: the client IP is the last `X-Forwarded-For` entry, so spoofed entries don't change the key; the stored key is an HMAC that reveals neither IP nor pepper; no token is needed in public mode; over a limit gives 429 with `Retry-After` on tools and `/ask`; `/health` is never counted; neither the pepper nor the IP appears in logs or responses; a missing pepper fails closed; IPv6 clients share a key per /64 and IPv4-mapped addresses count as IPv4; invalid `/ask` bodies (422) are not counted while valid ones are; with the DB: the minute and UTC-day limits, rejected requests not counted, the 48-hour purge, and `scout_reader` refused on `agent_requests`. Neon grants checked with `docs/deploy/neon_verify.sql` (17 rows) after `neon_rate_limits.sql`, tested first on a local Postgres 16 with a non-superuser owner.
+- **Public mode and rate limits (M7):** `tests/test_limits.py`: the client IP is the last `X-Forwarded-For` entry, so spoofed entries don't change the key; the stored key is an HMAC that reveals neither IP nor pepper; no token is needed in public mode; over a limit gives 429 with `Retry-After` on tools and `/ask`; `/health` is never counted; neither the pepper nor the IP appears in logs or responses; a missing pepper fails closed; IPv6 clients share a key per /64, IPv4-mapped addresses count as IPv4, and malformed entries share one bucket; an invalid `/ask` body counts only against the pre-validation bucket and a valid one against both; with the DB: 12 simultaneous checks for one client admit exactly 5 (both directly and through `/ask` with a stubbed model; both tests fail without the advisory lock), 21 invalid `/ask` bodies give 20 × 422 then 429 with nothing counted against the question limits, the minute and UTC-day limits, rejected requests not counted, the 48-hour purge, and `scout_reader` refused on `agent_requests`. Neon grants checked with `docs/deploy/neon_verify.sql` (17 rows) after `neon_rate_limits.sql`, tested first on a local Postgres 16 with a non-superuser owner.
 
 ## Public demo (M7)
 The API runs on Google Cloud Run (`europe-west1`, service `scout`) with the demo-only database on Neon (Frankfurt).
@@ -114,7 +114,7 @@ Open access, no tokens (`PUBLIC_DEMO=true`). MCP stays local (stdio). Limits (ap
 
 | Endpoint | Per client IP | Global |
 |---|---|---|
-| `POST /ask` (calls Claude) | 5 per minute, 20 per UTC day | US$0.50/day spend cap |
+| `POST /ask` (calls Claude) | valid questions: 5 per minute, 20 per UTC day (00:00–24:00 UTC, not a rolling 24 h); every request, valid or not: 20 per minute | US$0.50/day spend cap |
 | Tool endpoints (no LLM) | 60 per minute | Cloud Run at most 2 instances, concurrency 20, 120 s timeout |
 | `/health` | none | — |
 
@@ -128,16 +128,21 @@ instance recycling.
   `/.well-known/security.txt`, and FastAPI's generated `/docs` and `/openapi.json` (`/redoc` is off). Nothing writes project data; requests write only trace rows (`agent_calls`, `agent_violations`)
   and the rate-limit log (`agent_requests`) as `scout_tracer`.
 - **Over a limit:** HTTP 429 with `Retry-After` (60 s, or the seconds to UTC midnight for the daily `/ask` limit).
-  Rejected requests are not counted, and neither are invalid questions (HTTP 422): `/ask` is counted only after its
-  body validates, so typos don't use up anyone's daily questions. Tool endpoints count every request (cheap; it also
-  limits floods of malformed requests).
+  Rejected requests are not counted. On `/ask`, every request first counts against a looser pre-validation bucket
+  (20 per minute), so floods of invalid bodies are bounded; only a question that validates then counts against the
+  5-per-minute and 20-per-day limits, so a typo (HTTP 422) doesn't use up one of the day's questions. Tool endpoints
+  count every request.
+- **Atomic counting:** each check-and-count runs in one transaction holding a Postgres advisory lock for its
+  (limit, client) pair, so concurrent requests from one client are counted one at a time and a burst can't overshoot
+  (12 simultaneous requests: exactly 5 admitted, tested).
 - **Client IP assumption (verified 2026-10-21 on the service's run.app URL):** the key is the last
   `X-Forwarded-For` entry, the one Google's front end appends; entries a client sends itself come before it. Seventy
   requests with a different spoofed header each shared one counter, while a request from another network was admitted
   at the same moment. **This breaks behind a load balancer or a custom-domain proxy**, where the last entry is the
   proxy's address and all clients would share one counter: revisit `scout/api/limits.py` before adding either.
   IPv6 clients are keyed by their /64 (a subscriber's usual allocation), so rotating addresses inside one /64 doesn't
-  reset the limit; IPv4-mapped addresses count as IPv4.
+  reset the limit; IPv4-mapped addresses count as IPv4. A last entry that isn't an IP address (or no address at all)
+  goes to one shared bucket, so malformed headers can't mint fresh keys (fail closed).
 - **Client IPs and logs:**
   - The app keeps only HMAC-SHA256(IP, pepper), deleted after 48 hours, and never logs the IP or the pepper.
     uvicorn's access log is off in the container (a local check found it printing the forwarded IP).
@@ -191,6 +196,5 @@ Bumped instead (fix older than two weeks): aiohttp 3.14.3 → 3.14.4 (8 advisori
 - Text documents are written with the loader role. The API and agent will only read them (`scout_reader`).
 - `.claude/settings.json` guards the coding assistant, not the machine: shell commands outside its deny list could still read `.env`. Tools that load `.env` (e.g. `uv --env-file`) may echo malformed lines in warnings (see the incident log).
 - Rate limits are per IP (per /64 for IPv6): many addresses (a botnet, or clients with many /64s) can still use the whole daily spend cap, which then refuses everyone until UTC midnight. The cap bounds the cost, not availability.
-- The rate-limit count and insert are not atomic, so a burst from one IP can overshoot a limit by a few requests.
 - The number check allows a number if some source number rounds to it, so small derived integers ("under 19" from an age of 18.8) can pass. Evals with an LLM judge (M5) cover derived claims.
 - The rest is completed in M6.
