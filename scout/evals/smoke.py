@@ -76,7 +76,7 @@ def write_report(rows: list[dict], spent: float) -> None:
     for r in rows:
         text = r["events"][-1].get("text", "").replace("\n", "\n> ")
         lines += [f"### {r['case']['id']}", f"**Q:** {r['case']['question']}", "", f"> {text}", ""]
-    REPORT.write_text("\n".join(lines), encoding="utf-8")
+    REPORT.write_text("\n".join(lines), encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":
