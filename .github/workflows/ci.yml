@@ -17,6 +17,8 @@ jobs:
       - run: uv sync --frozen
       # Leakage tests on synthetic data always run; the real-data and DB tests skip without data/raw and a DB.
       - run: uv run pytest -q
+      # Demo page logic (escaping, link allow-list, waking notice, limits): Node's built-in test runner, no packages
+      - run: node --test tests/js/*.test.mjs
       # The API image has no pandas: its tests must pass in an environment without it (runtime + dev groups, locked)
       - name: API tests without pandas
         env:
@@ -24,7 +26,7 @@ jobs:
         run: |
           uv sync --frozen --no-default-groups --group dev
           uv run --no-sync python -c "import importlib.util as u, sys; sys.exit(u.find_spec('pandas') is not None)"
-          uv run --no-sync pytest -q tests/test_api.py tests/test_health.py tests/test_limits.py tests/test_agent.py             tests/test_agent_db.py tests/test_runtime_image.py
+          uv run --no-sync pytest -q tests/test_api.py tests/test_health.py tests/test_limits.py tests/test_agent.py             tests/test_agent_db.py tests/test_runtime_image.py tests/test_page.py
 
   dependency-audit:
     runs-on: ubuntu-latest

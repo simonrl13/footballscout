@@ -180,6 +180,10 @@ def test_cited_passages_get_an_exact_revision_footer_with_the_license(wiki):
     assert "[wiki 1] Harry Kane's Wikipedia page, revision of 2026-06-01: https://en.wikipedia.org/w/index.php?oldid=222" in out["text"]
     assert "[wiki 2]" not in out["text"]
     assert "oldid=111" not in out["text"] and "CC BY-SA 4.0" in out["text"] and "action=history" in out["text"]
+    assert out["body"] == "Kane won the league in 2025 [wiki 1]."  # what the user sees, footer apart
+    assert out["sources"] == [{"ref": 1, "player": "Harry Kane", "revision_date": "2026-06-01",
+                               "revision_url": "https://en.wikipedia.org/w/index.php?oldid=222",
+                               "history_url": PASSAGE["page_history"]}]
     result = client.requests[1]["messages"][-1]["content"][0]["content"]
     assert '"ref": "wiki 1"' in result and '"ref": "wiki 2"' in result
 
@@ -192,6 +196,23 @@ def test_invented_refs_and_long_quotes_are_retried_then_blocked(wiki):
     assert events[-1]["type"] == "blocked"
     assert [(v[0], v[2]) for v in tracer.violations] == [("citation_check", "retried"), ("citation_check", "blocked")]
     assert "[wiki 3] does not exist" in client.requests[2]["messages"][-1]["content"]
+
+
+def test_every_ref_in_the_body_has_a_structured_source(wiki):
+    client = FakeClient(tool_use("search_text", {"query": "league"}),
+                        text("Kane won the league in 2025 [wiki 2]. Another page says so [wiki 1], see [wiki 2]."))
+    out = run(client)[0][-1]
+    refs = {int(n) for n in agent.REF.findall(out["body"])}
+    assert refs and refs == {src["ref"] for src in out["sources"]}  # every [wiki N] shown has its entry, and no extras
+    assert [src["revision_url"][-3:] for src in out["sources"]] == ["222", "111"]  # numbered by first appearance
+
+
+def test_the_number_check_reads_the_body_the_user_sees(wiki):
+    client = FakeClient(tool_use("search_text", {"query": "league"}), text("Kane scored 999 goals [wiki 1]."),
+                        text("Kane won the league [wiki 1]."))
+    events, tracer = run(client)
+    assert tracer.violations[0][0] == "number_check" and "999" in tracer.violations[0][1]
+    assert events[-1]["type"] == "answer" and "999" not in events[-1]["body"]
 
 
 def test_answers_without_wikipedia_get_no_footer():
