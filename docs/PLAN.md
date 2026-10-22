@@ -337,7 +337,7 @@ limit **$10/month** (owner, Anthropic Console), GCP budget alert at **$1** (owne
   - **Decision rule:** a smoke check, not a threshold: 5/5 is expected. Any failure is reported with its answer and
     investigated before the link is shared; nothing is tuned on this set, and the held-out set is not run against
     production.
-- [ ] Slim API image (owner, 2026-10-22; PR "M7 slim image"): pandas/numpy out, uv only at build time, bytecode
+- [x] Slim API image (owner, 2026-10-22; #53; measured on Cloud Run 2026-10-22: startup 9.6 s rollout / 12.7 s cold, cold `/ask` 19.1 s; latency work stopped): pandas/numpy out, uv only at build time, bytecode
   for exactly what startup imports. After the deploy: the rollout's "Starting new instance → probe passed" from Cloud
   Run's startup logs (owner) against 7.3–8.4 s before #51 and 12.9–15.4 s with #51, then one cold `/ask` after 30+
   idle minutes with the stage breakdown; nothing else uses quota.

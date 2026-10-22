@@ -640,6 +640,21 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 - **Not yet known:** whether this brings Cloud Run's cold start back under the pre-#51 7.3–8.4 s (the image is now
   smaller than before #51). Measured after the deploy: the rollout's startup-log time, then one cold `/ask`.
 
+### 2026-10-22 — Slim image on Cloud Run: modest gain; latency work stopped (decision)
+- **Startup logs (owner), "Starting new instance" → probe passed:** before #51 7.3–8.4 s (4 starts); #51 12.9 s
+  (rollout) and 15.4 s (cold); #53 slim image 9.6 s (rollout 18:44 UTC) and 12.7 s (cold 19:16 UTC).
+- **Cold `/ask` (19:16 UTC, 32 idle minutes, same question as every cold run, one sample):** total 19.13 s against
+  21.37 s (#51) and 23.43 s (before #51); first event 17.00 s. Non-model, non-tool time 15.84 s against 17.57 s and
+  19.14 s.
+- **Reading:** the smaller image (gzipped 129.4 → 65.7 MB) helped modestly, about 3 s of startup and 1.7 s of the cold
+  request. The remaining cost is likely the startup import (Anthropic SDK + agent) on Cloud Run's CPU: before #51 the
+  same import cost about 9 s inside the first `/ask`, and #51 moved it into startup, so it was moved, not added. Not
+  proven: one sample per image, no per-module timing on Cloud Run.
+- **Negative result, kept:** three rounds of startup work (#51, #53) took the cold `/ask` from 23.4 s to 19.1 s.
+- **Decision (owner): stop optimizing.** Accept about 19 s for a cold request with a warning shown to users (README text
+  next to the link; the planned demo page shows it after 5 s without an event). No `min-instances` (cost). No further
+  latency work.
+
 ---
 
 ## Paper notes
