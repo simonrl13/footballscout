@@ -595,6 +595,18 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 - **Smoke evals:** pre-registered in PLAN.md (5 questions, `scout/evals/smoke.jsonl`, normal limits, no bypass) and
   committed before any run; results in a separate entry.
 
+### 2026-10-22 — M7 review fixes deployed: latency re-measured, production smoke evals (result)
+- **Protocol (owner's order):** after #51 deployed, one cold request after 32 idle minutes, 5 warm requests, then the
+  5 pre-registered smoke questions; 11 valid questions in one UTC day, starts 16 s apart. Total cost US$0.0090.
+- **Latency (`reports/m7_latency.md`):** the first-`/ask` stall is gone (9.02 s → 0.47 s before the first model call),
+  and bytecode halves the startup imports in the image (7.43 s → 3.86 s at 1 CPU). The cold total still fell only
+  from 23.4 s to 21.4 s: instance admission grew from about 9 s to about 16 s, for a reason the traces can't show
+  (image pull for a never-started revision, Neon wake-up, variance; n = 1 each). Warm median 6.6 s (n = 5) against
+  4.3 s (n = 9): non-model time unchanged; the model made more calls on the same questions.
+  Negative result, kept: the cold-start fix only fixed the part that was ours to fix.
+- **Smoke evals (`reports/m7_smoke.md`):** 5/5 passed (forecast, injection refused, out of scope, nonexistent player,
+  RAG with citation), US$0.0033, under the normal public limits, no bypass. No deviation from the pre-registration.
+
 ---
 
 ## Paper notes
