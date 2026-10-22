@@ -37,8 +37,8 @@ Owner's protocol: one cold request at 02:45 UTC after 32 minutes without traffic
 request), then 5 warm requests 16 s apart, then the smoke set. The first 6 questions of the first run, identical and in
 the same order. Cost US$0.0057.
 
-**Cold: about 21–23 s.** Neon is ruled out; the extra time is container startup before uvicorn is ready, under
-investigation.
+**Cold: about 21–23 s** with #51 (about 19 s after the slim image, below). Neon is ruled out; the extra time is
+container startup before uvicorn is ready.
 - The first-`/ask` stall is gone: before the first model call, 9.02 s → 0.47 s.
 - Cloud Run's startup logs (owner, 2026-10-22), "Starting new instance" to the startup probe passing: 7.9, 8.3, 7.3 and
   8.4 s for the image before #51 (2 rollouts, 2 cold starts); 12.9 s (rollout, 02:12 UTC) and 15.4 s (the cold
@@ -95,5 +95,34 @@ same way on the same machine:
 
 - On a read-only filesystem as the runtime user, startup loads 2,371 modules from bytecode and compiles none; the
   container runs read-only.
-- Not yet measured on Cloud Run: the rollout's "Starting new instance → probe passed" and one cold `/ask` follow the
-  deploy (owner's protocol).
+
+## On Cloud Run after the slim image (2026-10-22, commit `b4fb275`)
+**Startup logs** (owner, "Starting new instance" → startup probe passed):
+
+| Image | Rollout | Cold start |
+|---|---|---|
+| Before #51 | 7.3–8.4 s (4 starts: 2 rollouts, 2 cold) | |
+| #51 | 12.9 s (02:12 UTC) | 15.4 s (02:45 UTC) |
+| #53, slim | 9.6 s (18:44 UTC) | 12.7 s (19:16 UTC) |
+
+**One cold `/ask`** at 19:16:00 UTC after 32 idle minutes (the Kane question used for every cold run; US$0.0006).
+The client and Neon clocks disagreed by about a second, so admission and end of stream are given together:
+
+| Stage (s) | Before #51 | #51 | #53, slim |
+|---|---|---|---|
+| Admission + end of stream (instance start, admission, checks, last bytes) | 10.12 | 17.10 | 15.37 |
+| Before the first model call | 9.02 | 0.47 | 0.47 |
+| **Non-model, non-tool time (sum of the two)** | **19.14** | **17.57** | **15.84** |
+| Model calls | 4.08 (3) | 3.61 (2) | 3.10 (2) |
+| Tools | 0.21 | 0.19 | 0.19 |
+| First event | 20.33 | 18.91 | 17.00 |
+| **Total** | **23.43** | **21.37** | **19.13** |
+
+- The smaller image helped modestly: about 3 s off startup in the logs (12.9–15.4 s → 9.6–12.7 s) and 1.7 s off the
+  non-model time of the cold `/ask`, while the image halved (129.4 → 65.7 MB gzipped).
+- Startup is still slower than before #51 (7.3–8.4 s) because #51 moved the Anthropic SDK and agent import from the
+  first `/ask` into startup. Before #51 that import cost about 9 s inside the first request; the non-model time of a
+  cold `/ask` has fallen at each step (19.1 → 17.6 → 15.8 s), so the import was moved rather than added. On Cloud
+  Run's CPU it takes much longer than the 2.1 s measured locally. Likely, not proven: one sample per image.
+- **Decision (owner, 2026-10-22): stop optimizing.** A cold request takes about 19 s; users are warned (README text next
+  to the link, and the planned demo page). No `min-instances`. No further latency work.
