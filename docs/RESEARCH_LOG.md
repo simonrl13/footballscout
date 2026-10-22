@@ -600,10 +600,19 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
   5 pre-registered smoke questions; 11 valid questions in one UTC day, starts 16 s apart. Total cost US$0.0090.
 - **Latency (`reports/m7_latency.md`):** the first-`/ask` stall is gone (9.02 s → 0.47 s before the first model call),
   and bytecode halves the startup imports in the image (7.43 s → 3.86 s at 1 CPU). The cold total still fell only
-  from 23.4 s to 21.4 s: instance admission grew from about 9 s to about 16 s, for a reason the traces can't show
-  (image pull for a never-started revision, Neon wake-up, variance; n = 1 each). Warm median 6.6 s (n = 5) against
-  4.3 s (n = 9): non-model time unchanged; the model made more calls on the same questions.
-  Negative result, kept: the cold-start fix only fixed the part that was ours to fix.
+  from 23.4 s to 21.4 s. **Negative result, kept:** the fix only fixed the part that was ours to fix.
+  - Startup-log evidence (owner, Cloud Run logs): new instance to probe passed 7.3–8.4 s for the old image (4
+    starts) against 12.9 s and 15.4 s for the #51 image (2 starts). The probe passed at 02:45:17.1 with almost nothing
+    left before admission: Neon is ruled out; the time is inside the container before uvicorn is ready. About 2 s is
+    the import moved to startup, by design.
+  - Open cause: the #51 image is 18.4 MB larger gzipped, all bytecode, and only 6.7 MB of it is imported at startup;
+    locally the new image starts faster, so fetching/unpacking the larger image on Cloud Run is the leading
+    hypothesis, unproven. Fix options ranked by size in the report; none applied yet.
+  - **Decision: no `min-instances`.** An always-on instance would cost more than the project's GCP budget allows; a
+    cold start stays about 20 s, which the docs state.
+  - Warm: median 6.6 s (n = 5), model calls 82% of it; the same 5 questions took 14 model calls against 12 before
+    (two different tool paths, one number-check retry), model variation rather than a code change. No regression
+    claimed and no comparison with the 6 s target at n = 5.
 - **Smoke evals (`reports/m7_smoke.md`):** 5/5 passed (forecast, injection refused, out of scope, nonexistent player,
   RAG with citation), US$0.0033, under the normal public limits, no bypass. No deviation from the pre-registration.
 

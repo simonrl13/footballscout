@@ -34,27 +34,46 @@ project budget. The re-measurement after the fixes are deployed is added below w
 
 ## After the fixes (2026-10-22, commit `2159956`)
 Owner's protocol: one cold request at 02:45 UTC after 32 minutes without traffic (the deploy's own check was the last
-request), then 5 warm requests 16 s apart, then the smoke set. The first 6 questions of the first run, in the same
-order. Cost US$0.0057. The client clock had drifted to about 2.2 s behind Neon's, so admission and end-of-stream
-are reported together (total minus the stages measured on one clock).
+request), then 5 warm requests 16 s apart, then the smoke set. The first 6 questions of the first run, identical and in
+the same order. Cost US$0.0057.
 
-| Stage | Cold before | Cold after | Warm before (n = 9) | Warm after (n = 5) |
-|---|---|---|---|---|
-| Admission + check/end of stream | 10.12 | 17.10 | 0.60 (0.59–0.67) | 0.72 (0.70–0.93) |
-| Before the first model call | 9.02 | **0.47** | 0.22 (0.20–0.24) | 0.25 (0.24–0.26) |
-| Model calls (sum) | 4.08 (3 calls) | 3.61 (2 calls) | 3.38 (3.21–6.57) | 5.12 (4.61–7.14), 2–4 calls |
-| Tools between model calls | 0.21 | 0.19 | 0.06 (0.06–0.13) | 0.11 (0.06–0.28) |
-| **First event** | 20.33 | 18.91 | 1.89 (1.67–2.43) | 2.14 (1.77–3.07) |
-| **Total** | **23.43** | **21.37** | **4.29 (4.13–7.44)** | **6.57 (5.64–8.29)** |
+**Cold: about 21–23 s.** Neon is ruled out; the extra time is container startup before uvicorn is ready, under
+investigation.
+- The first-`/ask` stall is gone: before the first model call, 9.02 s → 0.47 s.
+- Cloud Run's startup logs (owner, 2026-10-22), "Starting new instance" to the startup probe passing: 7.9, 8.3, 7.3 and
+  8.4 s for the image before #51 (2 rollouts, 2 cold starts); 12.9 s (rollout, 02:12 UTC) and 15.4 s (the cold
+  request, 02:45 UTC) for the #51 image. The probe passed at 02:45:17.1 and almost nothing remained between uvicorn
+  being ready and the request being admitted, so Neon waking up is not the cause. About 2 s of the increase is the
+  Anthropic SDK and agent import moved to startup, by design; the rest is open (see the investigation below).
+- Total 21.37 s (first event 18.91 s); model calls 3.61 s (2 calls).
 
-- **The first-`/ask` stall is gone:** before the first model call, 9.02 s → 0.47 s cold (and unchanged warm).
-- **Bytecode compilation works:** in the production image at 1 CPU, importing the app (now including the Anthropic SDK
-  and the agent) takes 3.86 s, against 7.43 s for the same imports in the previous image; 4,297 `.pyc` files ship.
-- **But the cold total improved by only 2.1 s:** admission (instance start until the request is counted) grew from
-  about 9 s to about 16 s. The traces can't say why. Imports are ruled out by the measurement above; the candidates are
-  pulling the image for a revision that had never scaled from zero, Neon waking from suspension, and cold-start
-  variance (one cold sample each). Cloud Run's startup log lines would separate them. Until then, cold starts are
-  about 20 s and the docs say so.
-- **Warm:** non-model time is unchanged (0.25 s before the first call, about 0.7 s around the edges); the higher
-  warm median comes from the model: the same questions took more calls this time (2–4 against 2–3) and longer
-  answers. Warm requests stay at or near the 6 s target (median 6.57 s, n = 5); the model calls dominate.
+**Warm: median 6.6 s (n = 5), model calls a median 82% of the time (78–86%).** Non-model time is unchanged (before
+the first model call 0.25 s; admission and end of stream about 0.7 s). No regression is claimed from 5 requests.
+
+Same 5 questions, before (2026-10-21, image before #51) and after (calls from the `agent_calls` trace rows):
+
+| # | Before: model calls, tools, total | After: model calls, tools, total |
+|---|---|---|
+| 2 | 2, search_players, 4.18 s | 4, search_players + predict_value_change (plus one number-check retry), 8.29 s |
+| 3 | 2, search_players, 4.13 s | 3, search_players + predict_value_change, 5.92 s |
+| 4 | 2, search_players, 7.44 s | 2, search_players, 6.57 s |
+| 5 | 3, search_players + predict_value_change, 5.29 s | 2, search_players, 5.64 s |
+| 6 | 3, search_players × 2 + compare_players, 6.71 s | 3, search_players × 2 + compare_players, 6.86 s |
+
+12 model calls and 8 tool calls before, 14 and 9 after: the model chose different paths on two questions and one
+answer was retried by the number check. This is model variation on identical questions, not a code change (the
+agent and prompt did not change in #51).
+
+**Startup investigation (2026-10-22, read-only, local rebuilds of both commits at 1 CPU / 512 MiB):**
+- Image size: 484.0 → 569.4 MB uncompressed (Docker's figure), 111.0 → 129.4 MB gzipped. Filesystem content differs only
+  in `/app/.venv`: +54.1 MB, all `.pyc` (4,297 files; 18.4 MB gzipped, i.e. the whole compressed increase).
+- The `.pyc` files are used: on a read-only filesystem, importing the app loads 2,529 modules from bytecode with none
+  stale; 102 are still compiled from source at every start (88 standard-library modules, which the slim base ships
+  without bytecode, and 14 of ours, installed editable).
+- Locally the #51 image starts faster (container start to the first `/health`: 2.7–3.0 s against 3.4–4.2 s, 3 runs
+  each), so the Cloud Run increase isn't reproduced once the image is local; the leading hypothesis is fetching and
+  unpacking the larger image on a new instance. Not proven.
+- Only 2,447 of the 4,297 compiled files (6.7 of 18.4 MB gzipped) are imported at startup. The image also carries the
+  uv binary (56 MB, 22.1 MB gzipped), unused at runtime except to launch uvicorn, and pandas + numpy (135 MB, 40.2 MB
+  gzipped, about 0.44 s of import at 1 CPU), loaded only because `scout.agent.tools` imports `fold` from
+  `scout/text/linker.py`, which imports pandas.
