@@ -157,7 +157,8 @@ def resolve(case: dict, db) -> dict:
 def _has_number(answer: str, value: float) -> bool:
     """The answer quotes `value` as given (38.4) or rounded to a whole number (38); signs may be words ("a fall of").
     Rounding is Python's (half to even: 20.5 -> 20). The production smoke set matches whole numbers within 0.5 instead
-    (scout/evals/smoke.py, pre-registered 2026-10-23); this rule, used by the dev and held-out evals, is unchanged."""
+    (scout/evals/smoke.py, pre-registered 2026-10-23); this rule, used by the dev and held-out evals, is unchanged.
+    Known grader gap (2026-10-23, kept on purpose): signs are ignored here, so a wrong-direction quote can pass."""
     targets = {round(abs(value), 1), float(round(abs(value)))}
     return any(abs(float(n.replace(",", "")) - t) < 1e-9 for n in numbers(answer) for t in targets)
 

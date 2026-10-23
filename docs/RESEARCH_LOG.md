@@ -687,6 +687,21 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
   changed and the dev/held-out evals keep their rule (it backs the approved thresholds), so the two sets now match
   whole numbers differently, by design. Past results stand (run 1 5/5, run 2 4/5; neither used a whole-number bound).
 
+### 2026-10-23 — Signs: smoke matcher direction rule (pre-registered), number-check gap found, grader gap kept
+- **Found:** a test that a wrong sign fails ("+40%" for -40.5) failed. Both the smoke matcher and the production
+  number check compare absolute values (`numbers()` drops signs, by design so "a fall of 38.4%" quotes -38.4). So an
+  answer stating the opposite direction of the model's forecast ("a rise of 18.6%" for -18.6) passes the number check
+  and is released.
+- **Fix 1 (smoke matcher; pre-registered here, before any run):** direction from an explicit sign or a direction word
+  immediately before or after the number in the same clause; "up to"/"down to" are not directions; a negated direction
+  is ambiguous; ambiguous or no direction matches on magnitude. Contradictions don't match. Tests cover the wrong-sign
+  cases, agreeing directions, "up to", negation and no-direction.
+- **Fix 2 (production number check):** planned, own PR, validated on recordings and a replay of recorded held-out
+  answers before deploying (docs/PLAN.md). The public link stays unshared until it is deployed.
+- **Fix 3 (dev/held-out `quote` check):** left unchanged on the owner's decision (it backs the approved thresholds);
+  documented as a known grader gap.
+- **Past results stand:** smoke run 1 5/5, run 2 4/5; under the direction rule both forecast answers still match (directions from signs and, in run 1, the word "fall"; all agree).
+
 ---
 
 ## Paper notes

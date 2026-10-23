@@ -32,6 +32,65 @@ def unsupported(answer: str, sources: list[str]) -> list[str]:
     return out
 
 
+# Direction of a quoted number (pre-registered 2026-10-23, docs/PLAN.md). Used by the production smoke matcher; the
+# production number check adopts it separately (fix 2). A number's direction comes from an explicit sign, else from
+# a direction word right before it ("a fall of 18.6%", skipping small words) or right after it ("an 18.6% drop",
+# "18.6% lower") in the same clause. "up to" / "down to" are not directions; a negated direction ("not expected to
+# fall") is ambiguous. Ambiguous or no direction: None (callers then match on magnitude only).
+NEGATIVE = {"fall", "falls", "falling", "fell", "drop", "drops", "dropping", "dropped", "decline", "declines",
+            "declining", "declined", "decrease", "decreases", "decreasing", "decreased", "down", "lower", "lose",
+            "loses", "losing", "lost", "loss"}
+POSITIVE = {"rise", "rises", "rising", "rose", "increase", "increases", "increasing", "increased", "gain", "gains",
+            "gaining", "gained", "up", "grow", "grows", "growing", "grew", "growth", "higher"}
+FILLERS = {"of", "by", "a", "an", "the", "about", "around", "roughly", "approximately", "nearly", "almost", "some", "just"}
+NEGATIONS = {"not", "no", "never", "without", "hardly", "unlikely"}
+WORD = re.compile(r"[a-z]+(?:'[a-z]+)?")
+CLAUSE_END = re.compile(r"[;:!?\n]|\.(?!\d)")
+AFTER = re.compile(r"\s*(?:%|percent\b|per cent\b)?\s*([a-z]+)")
+SIGNS = {"+": 1, "-": -1, "−": -1}
+
+
+def _negated(words: list[str]) -> bool:
+    return any(w in NEGATIONS or w.endswith("n't") for w in words)
+
+
+def _word_direction(word: str) -> int | None:
+    return -1 if word in NEGATIVE else 1 if word in POSITIVE else None
+
+
+def directed_numbers(text: str) -> list[tuple[str, int | None]]:
+    """Each number in `text` with its stated direction: +1, -1, or None (no direction, or an ambiguous one)."""
+    low, out, prev_end = text.lower(), [], 0
+    for m in NUMBER.finditer(low):
+        s, e = m.span()
+        clause = max((c.end() for c in CLAUSE_END.finditer(low, 0, s)), default=0)
+        direction = None
+        if s > 0 and low[s - 1] in SIGNS and (s == 1 or not low[s - 2].isalnum()):  # "-40.9", not "20-30" or dates
+            direction = SIGNS[low[s - 1]]
+        else:
+            start = max(clause, prev_end)  # never read past the previous number
+            words = WORD.findall(low[start:s])
+            i = len(words) - 1
+            while i >= 0:
+                if words[i] == "to" and i > 0 and words[i - 1] in ("up", "down"):
+                    i -= 2  # "up to 40.9%", "down to 40%": a bound, not a direction
+                elif words[i] in FILLERS:
+                    i -= 1
+                else:
+                    break
+            if i >= 0 and _word_direction(words[i]) is not None:
+                negated = _negated(WORD.findall(low[clause:start]) + words[:i])
+                direction = None if negated else _word_direction(words[i])
+            else:
+                after = AFTER.match(low, e)
+                if after and _word_direction(after.group(1)) is not None:
+                    negated = _negated(WORD.findall(low[clause:s]))
+                    direction = None if negated else _word_direction(after.group(1))
+        out.append((m.group(), direction))
+        prev_end = e
+    return out
+
+
 if __name__ == "__main__":
     tool = '{"predicted_change_pct": -38.4, "market_value_eur_m": 60.0, "valuation_date": "2026-05-27", "source": "80% interval"}'
     assert unsupported("1. Kane: the model forecasts a 38.4% fall (80% interval), from EUR 60m on 2026-05-27.", [tool]) == []

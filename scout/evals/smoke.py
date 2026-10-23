@@ -27,7 +27,7 @@ import urllib.request
 from pathlib import Path
 
 from scout.agent import tools
-from scout.agent.numbers import numbers
+from scout.agent.numbers import directed_numbers
 from scout.data.manifest import ROOT, git_commit
 from scout.evals.run import grade, resolve
 
@@ -39,10 +39,14 @@ WHOLE_NUMBER_TOLERANCE = 0.5  # smoke checks only (pre-registered 2026-10-23)
 
 
 def smoke_has_number(answer: str, value: float) -> bool:
-    """`value` quoted as given (one decimal), or as a whole number within 0.5 of it, inclusive. Signs are ignored, as in
-    run._has_number (a sign may be written as a word: "a fall of 18.6%")."""
-    target = abs(value)
-    for token in numbers(answer):
+    """`value` quoted as given (one decimal), or as a whole number within 0.5 of it, inclusive, with a direction that
+    doesn't contradict it: an explicit sign or a direction word ("a fall of 18.6%", "an 18.6% drop") must agree with
+    the value's sign; no direction, or an ambiguous one ("not expected to fall"), matches on magnitude
+    (scout.agent.numbers.directed_numbers; pre-registered 2026-10-23)."""
+    target, sign = abs(value), (value > 0) - (value < 0)
+    for token, direction in directed_numbers(answer):
+        if direction is not None and sign and direction != sign:
+            continue  # "+40%" or "a rise of 41%" for -40.5: a contradiction, not a quote
         n = float(token.replace(",", ""))
         if "." in token:
             if abs(n - round(target, 1)) < 1e-9:

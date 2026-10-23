@@ -134,3 +134,45 @@ def test_report_states_the_check_version_dates_and_ungraded_cases(monkeypatch, t
     assert path.name.endswith("_abc1234.md") and "Forecast check v2" in report
     assert "deployed 2026-06-12, local 2026-07-01 (differ: provenance not graded)" in report
     assert "**0/1 passed**, 1 not graded" in report and "| NOT GRADED |" in report and "| provenance |" in report
+
+
+def test_a_wrong_sign_fails_under_the_smoke_rule():
+    assert not smoke.smoke_has_number("+40%", -40.5)
+    assert not smoke.smoke_has_number("a rise of 41%", -40.5)
+    assert not smoke.smoke_has_number("a fall of 20%", 20.5)
+
+
+def test_directions_that_agree_match():
+    assert smoke.smoke_has_number("The model forecasts a fall of 18.6%.", -18.6)
+    assert smoke.smoke_has_number("The model forecasts -19% over 12 months.", -18.6)
+    assert smoke.smoke_has_number("The model forecasts an 18.6% drop.", -18.6)
+    assert smoke.smoke_has_number("His value could end 18.6% lower.", -18.6)
+    assert smoke.smoke_has_number("from a fall of 40.9% to a rise of 20.5%", -40.9)
+    assert smoke.smoke_has_number("from a fall of 40.9% to a rise of 20.5%", 20.5)
+
+
+def test_up_to_and_down_to_are_not_directions():
+    # "a fall of up to 40.9%" reads as negative: "up to" is skipped and "fall" gives the direction
+    assert smoke.smoke_has_number("a fall of up to 40.9%", -40.9)
+    assert not smoke.smoke_has_number("a fall of up to 40.9%", 40.9)
+    assert smoke.smoke_has_number("it could go down to 40%", 40.5) and smoke.smoke_has_number("down to 40%", -40.5)
+
+
+def test_a_negated_direction_matches_on_magnitude():
+    for value in (-18.6, 18.6):
+        assert smoke.smoke_has_number("His value is not expected to fall by 18.6%.", value)
+        assert smoke.smoke_has_number("It isn't an 18.6% drop.", value)
+
+
+def test_no_sign_and_no_direction_word_matches_on_magnitude():
+    for value in (-18.6, 18.6):
+        assert smoke.smoke_has_number("The model forecasts 18.6% over 12 months.", value)
+
+
+def test_direction_reading_does_not_misfire():
+    from scout.agent.numbers import directed_numbers
+    assert directed_numbers("a 12-month forecast, ages 20-30, data as of 2026-06-12") == [
+        ("12", None), ("20", None), ("30", None), ("2026", None), ("06", None), ("12", None)]
+    assert directed_numbers("a rise of 5% and 18.6%") == [("5", 1), ("18.6", None)]  # a direction doesn't carry over
+    assert directed_numbers("It fell. 18.6% is the forecast.") == [("18.6", None)]  # nor across sentences
+    assert directed_numbers("-40.9% to +20.5%") == [("40.9", -1), ("20.5", 1)]
