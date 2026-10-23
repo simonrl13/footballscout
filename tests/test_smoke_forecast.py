@@ -131,7 +131,10 @@ def test_report_states_the_check_version_dates_and_ungraded_cases(monkeypatch, t
     path = smoke.write_report([{"case": CASE, "events": evts, "checks": checks, "secs": 4.2}], 0.0006,
                               "2026-06-12", "2026-07-01")
     report = path.read_text(encoding="utf-8")
-    assert path.name.endswith("_abc1234.md") and "Forecast check v2" in report
+    assert path.name.endswith("_abc1234.md")
+    rules = report.splitlines()[3]
+    for rule in ["forecast check v2", "smoke whole-number tolerance", "direction rule"]:  # every rule in effect
+        assert rule in rules, rule
     assert "deployed 2026-06-12, local 2026-07-01 (differ: provenance not graded)" in report
     assert "**0/1 passed**, 1 not graded" in report and "| NOT GRADED |" in report and "| provenance |" in report
 

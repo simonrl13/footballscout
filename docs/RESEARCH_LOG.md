@@ -729,6 +729,18 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 - **Reading:** the gap was real but unused in every recorded answer; the check costs nothing on them. The public link
   stays unshared until this is merged and deployed.
 
+### 2026-10-23 — Smoke run 3 after the direction check deploy: 5/5
+- **Run:** once, after #59 (`f9e228b`) deployed; the 5 pre-registered questions under the normal public limits, no
+  bypass; held-out set not run. US$0.0032. Report: `reports/m7_smoke_2026-10-23_f9e228b.md`.
+- **Grading:** forecast check v2 (pre-registered 2026-10-22) with the smoke-only tolerance and direction rule
+  (pre-registered 2026-10-23, before this run). Data date: deployed 2026-06-12, local 2026-06-12, so provenance was
+  graded.
+- **Result:** 5/5. `sm-forecast` answered through `search_players` only, the path that failed run 2's tool check; it
+  passed all five checks (numbers -18.6%, -40.9% to +20.5% with matching signs; provenance from the re-run
+  `search_players` call). No direction-check violation reached the user.
+- **History:** run 1 5/5 (`2159956`), run 2 4/5 (`953862b`, v1 tool check), run 3 5/5 (`f9e228b`, v2). Past results
+  stand.
+
 ---
 
 ## Paper notes
