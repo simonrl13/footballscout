@@ -352,6 +352,9 @@ limit **$10/month** (owner, Anthropic Console), GCP budget alert at **$1** (owne
       requires every number to come from a tool result, the question or the fixed facts.)
     - **(c) Unchanged:** `outcome` (an answer is released), `quote` (the predicted change quoted) and `interval`
       ("80%" mentioned), as in the original pre-registration.
+    - **Data date (added 2026-10-23, owner, before any run):** the eval records the deployed data date from `/meta`
+      at run time and compares it with the local data it re-runs against. If they differ, (b) is not graded: the case
+      is reported as NOT GRADED, never passed (a case that already failed another check stays FAILED).
     - The `tools: [predict_value_change]` check is removed. The other four cases are unchanged. The question is the
       same. Implemented and unit-tested in a separate PR before the next run, without running the smoke set; that
       run's report states the check version.

@@ -678,6 +678,9 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 - **Not changed:** the question, the other four cases, the protocol, the decision rule.
 - **Past results stand:** run 1 5/5, run 2 4/5 (recorded as 4/5 on the owner's decision). Neither is regraded.
 - **Next:** implement and unit-test the check in its own PR; no smoke run until the owner asks.
+- **Addition (2026-10-23, owner, before any run):** the eval records the deployed `/meta` data date and refuses to grade
+  (b) when it differs from the local data it re-runs against (NOT GRADED, never a pass). Implemented with unit tests
+  (`tests/test_smoke_forecast.py`); reports are now dated per run, so earlier reports aren't overwritten.
 
 ---
 
