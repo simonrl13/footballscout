@@ -5,6 +5,8 @@
 - Number check: the final answer may only contain numbers found in this turn's tool results, the question or the
   fixed facts in SYSTEM (data date, horizon, interval level, league names such as "Ligue 1"). One
   retry with feedback; if it still fails, the answer is blocked. Both cases are logged in agent_violations.
+- Direction check (2026-10-23): a percentage whose stated direction ("a rise of", "+") contradicts every matching
+  tool value ("a rise of 18.6%" for -18.6) takes the same retry-then-block path (logged as direction_check).
 - Every model call is a row in agent_calls (tokens, cost, latency, tools requested).
 - Citation check: [wiki n] refs must come from this turn's search_text results and quotes stay <= 300 characters
   (same retry/block path); the sources footer (exact revision, page history, CC BY-SA notice) is built in code.
@@ -32,7 +34,7 @@ from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
 from scout.agent import tools
-from scout.agent.numbers import unsupported
+from scout.agent.numbers import contradictions, unsupported
 from scout.text.extract import prices
 
 DAILY_CAP_USD = 0.50
@@ -216,7 +218,8 @@ def run(question: str, client, tracer, db, model: str | None = None, use_cache: 
         answer = "".join(b["text"] for b in resp["content"] if b["type"] == "text").strip()
         shown, used = renumber_refs(answer, citations)  # the body the user sees (refs renumbered in code)
         bad, cite = unsupported(REF.sub("", shown), sources), citation_problems(answer, citations)  # refs aren't claims
-        if not bad and not cite:
+        wrong = contradictions(REF.sub("", shown), sources)  # "a rise of 18.6%" for a forecast of -18.6
+        if not bad and not cite and not wrong:
             # text: body + sources footer (evals, CLI); body + sources: the same, structured, for the demo page
             yield {"type": "answer", "conversation_id": cid, "text": shown + sources_footer(shown, used), "body": shown,
                    "sources": source_list(used), "cost_usd": round(total, 6), "citations": len(used)}
@@ -226,6 +229,10 @@ def run(question: str, client, tracer, db, model: str | None = None, use_cache: 
             tracer.violation(cid, "number_check", {"numbers": bad, "answer": answer[:2000]}, action)
             feedback.append(f"Your answer contains numbers that are not in any tool result: {', '.join(bad)}. Rewrite it "
                             f"using only numbers copied from the tool results (or describe them in words).")
+        if wrong:
+            tracer.violation(cid, "direction_check", {"numbers": wrong, "answer": answer[:2000]}, action)
+            feedback.append(f"Your answer gives a direction (a rise or a fall, or a sign) that contradicts the tool "
+                            f"results for: {', '.join(wrong)}%. State the direction the tool results show.")
         if cite:
             tracer.violation(cid, "citation_check", {"numbers": cite, "answer": answer[:2000]}, action)
             feedback.append(f"Citation problems: {'; '.join(cite)}. Cite only refs returned by search_text, and quote "

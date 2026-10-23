@@ -702,6 +702,28 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
   documented as a known grader gap.
 - **Past results stand:** smoke run 1 5/5, run 2 4/5; under the direction rule both forecast answers still match (directions from signs and, in run 1, the word "fall"; all agree).
 
+### 2026-10-23 — Number-check direction (fix 2): built and validated on recorded answers
+- **Change:** `numbers.contradictions()`: a percentage with a stated direction (an explicit sign, or a direction word
+  per `directed_numbers`) is flagged when every tool value it matches has the opposite sign. Clear contradictions only:
+  no direction, a negated one, a matching value of unknown sign (question, system prompt, text such as Wikipedia
+  passages) or matching values of both signs all pass. The agent sends flagged answers through the existing
+  retry-then-block path and logs them as `direction_check`.
+- **Tests:** the three contradicting forms ("a rise of 18.6%", "+18.6%", a wrong-sign interval bound) are caught while
+  the number check alone passes them; both-signs magnitude passes (documented limitation); retry-then-block with two
+  logged violations; a contradiction fixed on retry is released with one.
+- **Validation, in the planned order, no model calls:**
+  1. Dev: the CI replay (16 cases) passes with the check enforced; the full dev set (37) passes 37/37 with the check
+     enforced, all from the response cache ($0; any new retry would have needed an unrecorded call and stopped the
+     run); an observe-only replay checked 38 answers and flagged none. Zero new blocks on previously passing answers.
+  2. A fresh CI recording, made from the cache only: 16/16 pass; responses, tool outputs and grades identical to the
+     previous recording.
+  3. Held-out: the 20 recorded answers (2026-10-13) replayed with the code that produced them (`be92cd3`, since a
+     later system-prompt change alters the request hashes) and this check observed: 20/20 replayed from the cache,
+     20 released, **none would now be flagged**. No live run, no tuning; noted in `docs/evals/HELDOUT_LOG.md` as a
+     replay, not a run.
+- **Reading:** the gap was real but unused in every recorded answer; the check costs nothing on them. The public link
+  stays unshared until this is merged and deployed.
+
 ---
 
 ## Paper notes
