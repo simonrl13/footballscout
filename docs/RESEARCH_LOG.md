@@ -721,6 +721,11 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
      later system-prompt change alters the request hashes) and this check observed: 20/20 replayed from the cache,
      20 released, **none would now be flagged**. No live run, no tuning; noted in `docs/evals/HELDOUT_LOG.md` as a
      replay, not a run.
+     Confirmed: the check applied was #59's `contradictions()`. The replay script loads the agent code from the
+     `be92cd3` checkout (`--code-root`) and the check from this branch's `scout/agent/numbers.py` by file path; its
+     output recorded both origins (`agent_code`: the `be92cd3` checkout's `scout/agent/agent.py`; `check_code`: the
+     #59 branch's `scout/agent/numbers.py`), and it evaluated #59's `contradictions()` on each of the 20 answers
+     replayed from `be92cd3`'s cached responses (`answers_checked`: 20).
 - **Reading:** the gap was real but unused in every recorded answer; the check costs nothing on them. The public link
   stays unshared until this is merged and deployed.
 
