@@ -6,6 +6,18 @@ Forecasts how a player's Transfermarkt market value will change over the next 12
 
 - Problem definition: [docs/SPEC.md](docs/SPEC.md) · Plan and status: [docs/PLAN.md](docs/PLAN.md) · Security: [SECURITY.md](SECURITY.md)
 
+## Live demo
+
+[Try Scout](https://scout-246528398633.europe-west1.run.app/): ask about any of about 2,650 players in seven European leagues. Data as of 12 June 2026.
+
+The first request after a quiet period takes about 20 seconds while the server wakes up; later answers take a few seconds.
+
+Limits: 5 questions per minute and 20 per day per connection (UTC day). The search and data endpoints are free to use within their own limits.
+
+Market values are crowd estimates from Transfermarkt, not transfer fees. Answers are AI-generated, every number is checked against the tool results before release, and Wikipedia claims link to the exact revision used.
+
+The demo runs until 1 January 2027. After that, see the walkthrough video.
+
 ## Status
 - [x] **M1** — data pipeline rebuilt to the SPEC, point-in-time features with leakage tests, baselines, test-set gate, reproducibility, DB roles, security gates
 - [x] **M2** — MLflow tracking, validation-only tuning pass, 80% prediction intervals (split-conformal), excluded-share report (a Guardian client was built in M2 and removed in M3; nothing was ever fetched)
@@ -22,6 +34,7 @@ Forecasts how a player's Transfermarkt market value will change over the next 12
   - The player had at least 450 league minutes in those leagues the previous season.
 - **Target:** `log(value as of next 1 Sep / value as of 1 Sep)`, each the latest valuation on or before that date. Kept only if the player was revalued in between, so a zero means "revalued, unchanged".
 - **Split:** train 2013–2021 · validation 2022 · test 2023–2024. Never random.
+- **Size:** ~8,200 players (8,190) in 27,330 labelled snapshots, 2013–2024: the data the model was trained, validated and tested on. The [live demo](#live-demo) is a single later snapshot of the same population rules (12 June 2026, no target yet): about 2,650 players (2,649), the ones the demo can answer about.
 
 ## Quick demo
 One command after cloning (needs Docker and uv): `uv run python -m scout.local_demo`. See [docs/DEMO.md](docs/DEMO.md) for the demo data, what to try, and the walkthrough.

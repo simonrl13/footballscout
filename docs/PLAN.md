@@ -314,7 +314,7 @@ limit **$10/month** (owner, Anthropic Console), GCP budget alert at **$1** (owne
   limit); Claude needs back only non-secret identifiers (Neon region, GCP project ID/number/region, WIF provider name)
 - [x] First deploy and smoke test against the public URL (2026-10-21: health, headers, security.txt, five tools, one
   `/ask`, 429 with spoofed `X-Forwarded-For`, a second network admitted while the first was limited)
-- [ ] README with the live link (**only when the owner says so**; until then the URL is in no repository file)
+- [x] README with the live link (owner's go-ahead and text, 2026-10-23; demo player count corrected to the loaded data, 2,649)
 - [x] Owner review of the deploy (2026-10-21): counters, spend layers, latency, client IP, logs, 422s
   (`docs/RESEARCH_LOG.md`, `reports/m7_latency.md`); fixes in PR "M7 review fixes"
 - [x] After the review fixes are deployed, in this order (owner, 2026-10-22; done 2026-10-22: `reports/m7_latency.md`, `reports/m7_smoke.md`), from one client within one UTC day
