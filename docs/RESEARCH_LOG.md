@@ -678,6 +678,29 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 - **Not changed:** the question, the other four cases, the protocol, the decision rule.
 - **Past results stand:** run 1 5/5, run 2 4/5 (recorded as 4/5 on the owner's decision). Neither is regraded.
 - **Next:** implement and unit-test the check in its own PR; no smoke run until the owner asks.
+- **Addition (2026-10-23, owner, before any run):** the eval records the deployed `/meta` data date and refuses to grade
+  (b) when it differs from the local data it re-runs against (NOT GRADED, never a pass). Implemented with unit tests
+  (`tests/test_smoke_forecast.py`); reports are now dated per run, so earlier reports aren't overwritten.
+- **Tolerance (2026-10-23, owner, before any run; smoke only):** whole-number quotes match within 0.5 of the true
+  value, inclusive (20.5 → 20 or 21; 20.4 → 20 only; same for negatives); decimals must match to one decimal. Found
+  while testing v2: the shared rule uses Python's round (half to even), so "+21%" failed for 20.5. `round()` is not
+  changed and the dev/held-out evals keep their rule (it backs the approved thresholds), so the two sets now match
+  whole numbers differently, by design. Past results stand (run 1 5/5, run 2 4/5; neither used a whole-number bound).
+
+### 2026-10-23 — Signs: smoke matcher direction rule (pre-registered), number-check gap found, grader gap kept
+- **Found:** a test that a wrong sign fails ("+40%" for -40.5) failed. Both the smoke matcher and the production
+  number check compare absolute values (`numbers()` drops signs, by design so "a fall of 38.4%" quotes -38.4). So an
+  answer stating the opposite direction of the model's forecast ("a rise of 18.6%" for -18.6) passes the number check
+  and is released.
+- **Fix 1 (smoke matcher; pre-registered here, before any run):** direction from an explicit sign or a direction word
+  immediately before or after the number in the same clause; "up to"/"down to" are not directions; a negated direction
+  is ambiguous; ambiguous or no direction matches on magnitude. Contradictions don't match. Tests cover the wrong-sign
+  cases, agreeing directions, "up to", negation and no-direction.
+- **Fix 2 (production number check):** planned, own PR, validated on recordings and a replay of recorded held-out
+  answers before deploying (docs/PLAN.md). The public link stays unshared until it is deployed.
+- **Fix 3 (dev/held-out `quote` check):** left unchanged on the owner's decision (it backs the approved thresholds);
+  documented as a known grader gap.
+- **Past results stand:** smoke run 1 5/5, run 2 4/5; under the direction rule both forecast answers still match (directions from signs and, in run 1, the word "fall"; all agree).
 
 ---
 

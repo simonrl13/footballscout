@@ -352,9 +352,26 @@ limit **$10/month** (owner, Anthropic Console), GCP budget alert at **$1** (owne
       requires every number to come from a tool result, the question or the fixed facts.)
     - **(c) Unchanged:** `outcome` (an answer is released), `quote` (the predicted change quoted) and `interval`
       ("80%" mentioned), as in the original pre-registration.
+    - **Data date (added 2026-10-23, owner, before any run):** the eval records the deployed data date from `/meta`
+      at run time and compares it with the local data it re-runs against. If they differ, (b) is not graded: the case
+      is reported as NOT GRADED, never passed (a case that already failed another check stays FAILED).
     - The `tools: [predict_value_change]` check is removed. The other four cases are unchanged. The question is the
       same. Implemented and unit-tested in a separate PR before the next run, without running the smoke set; that
       run's report states the check version.
+    - **Number matching tolerance (pre-registered 2026-10-23, owner, before any run; smoke checks only):** in every
+      smoke check that matches numbers (`quote`, `forecast_numbers`), a number quoted with decimals must equal the
+      value to one decimal, and a whole-number quote matches if it is within 0.5 of the true value, inclusive: 20.5
+      matches 20 and 21; 20.4 matches only 20; the same for negatives (-40.5 matches 40 and 41, the sign may be a
+      word). The dev and held-out evals keep the existing rule unchanged (`run._has_number`: Python `round`, half to
+      even, so 20.5 matches only 20). Reason: on the smoke set "+21%" for a bound of 20.5 is a correct quote and
+      shouldn't fail; the held-out rule is part of approved thresholds and stays as it was.
+    - **Direction (pre-registered 2026-10-23, owner, before any run; smoke checks only):** a quoted number matches only
+      if its direction doesn't contradict the true value's sign. Direction comes from an explicit sign, or from a
+      direction word immediately before or after the number in the same clause ("a fall of 18.6%", "an 18.6% drop",
+      "18.6% lower"); small words in between are skipped. "up to" and "down to" are not directions ("a fall of up to
+      40.9%" reads as negative). A negated direction ("not expected to fall") is ambiguous and matches on magnitude, as
+      does a number with no sign and no direction word. Rule in `scout.agent.numbers.directed_numbers`. Reason: the
+      matcher compared absolute values, so "+40%" or "a rise of 41%" matched -40.5 (found 2026-10-23 by a test).
     - **Past results stand:** run 1 5/5 (`reports/m7_smoke.md`), run 2 4/5. They are not regraded.
 - [x] Slim API image (owner, 2026-10-22; #53; measured on Cloud Run 2026-10-22: startup 9.6 s rollout / 12.7 s cold, cold `/ask` 19.1 s; latency work stopped): pandas/numpy out, uv only at build time, bytecode
   for exactly what startup imports. After the deploy: the rollout's "Starting new instance → probe passed" from Cloud
@@ -364,6 +381,18 @@ limit **$10/month** (owner, Anthropic Console), GCP budget alert at **$1** (owne
   text-only rendering of model output, Wikipedia-only source links from structured fields, waking notice after 5 s,
   429 explained; owner checks it on a real phone. After merge and deploy: rerun the 5 pre-registered smoke questions
   (not the held-out set) and report.
+- [ ] **Number-check direction (fix 2; planned 2026-10-23, owner; own PR, not built yet).** The production number check
+  (`numbers.unsupported`) ignores signs: "a rise of 18.6%" passes for a forecast of -18.6. Plan: apply
+  `directed_numbers` there, flagging only clear contradictions (a stated direction against every matching source
+  value's sign); ambiguous or undirected numbers pass as today. Contradictions go through the existing
+  retry-then-block path and are logged in `agent_violations`. Validation, in order: (1) the dev-set recordings and the
+  CI replay: zero new blocks on previously passing answers, and the three contradicting cases caught; record a fresh
+  CI replay; (2) a one-time replay of the recorded held-out answers (no live run, no tuning): report whether any
+  released answer would now be blocked; (3) SECURITY.md and the README describe the gap (found 2026-10-23) and the
+  fix. **The public link stays unshared until this is merged and deployed.**
+- **Known grader gap (fix 3, owner 2026-10-23: left unchanged):** the dev and held-out `quote` checks
+  (`run._has_number`) also ignore signs, so a wrong-direction quote can pass them. They back the approved thresholds,
+  so they stay as they are; the production number check (fix 2) is where direction is enforced.
 - **Reminders:**
   - [ ] **2026-11-02:** the `pip-audit` ignores in CI expire (SECURITY.md "Dependency exceptions"): bump certifi,
     pillow and virtualenv, or review and re-date them. CI fails from 2026-11-03 until then.
