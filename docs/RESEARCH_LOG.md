@@ -681,6 +681,11 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 - **Addition (2026-10-23, owner, before any run):** the eval records the deployed `/meta` data date and refuses to grade
   (b) when it differs from the local data it re-runs against (NOT GRADED, never a pass). Implemented with unit tests
   (`tests/test_smoke_forecast.py`); reports are now dated per run, so earlier reports aren't overwritten.
+- **Tolerance (2026-10-23, owner, before any run; smoke only):** whole-number quotes match within 0.5 of the true
+  value, inclusive (20.5 → 20 or 21; 20.4 → 20 only; same for negatives); decimals must match to one decimal. Found
+  while testing v2: the shared rule uses Python's round (half to even), so "+21%" failed for 20.5. `round()` is not
+  changed and the dev/held-out evals keep their rule (it backs the approved thresholds), so the two sets now match
+  whole numbers differently, by design. Past results stand (run 1 5/5, run 2 4/5; neither used a whole-number bound).
 
 ---
 

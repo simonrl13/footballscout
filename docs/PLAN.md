@@ -358,6 +358,13 @@ limit **$10/month** (owner, Anthropic Console), GCP budget alert at **$1** (owne
     - The `tools: [predict_value_change]` check is removed. The other four cases are unchanged. The question is the
       same. Implemented and unit-tested in a separate PR before the next run, without running the smoke set; that
       run's report states the check version.
+    - **Number matching tolerance (pre-registered 2026-10-23, owner, before any run; smoke checks only):** in every
+      smoke check that matches numbers (`quote`, `forecast_numbers`), a number quoted with decimals must equal the
+      value to one decimal, and a whole-number quote matches if it is within 0.5 of the true value, inclusive: 20.5
+      matches 20 and 21; 20.4 matches only 20; the same for negatives (-40.5 matches 40 and 41, the sign may be a
+      word). The dev and held-out evals keep the existing rule unchanged (`run._has_number`: Python `round`, half to
+      even, so 20.5 matches only 20). Reason: on the smoke set "+21%" for a bound of 20.5 is a correct quote and
+      shouldn't fail; the held-out rule is part of approved thresholds and stays as it was.
     - **Past results stand:** run 1 5/5 (`reports/m7_smoke.md`), run 2 4/5. They are not regraded.
 - [x] Slim API image (owner, 2026-10-22; #53; measured on Cloud Run 2026-10-22: startup 9.6 s rollout / 12.7 s cold, cold `/ask` 19.1 s; latency work stopped): pandas/numpy out, uv only at build time, bytecode
   for exactly what startup imports. After the deploy: the rollout's "Starting new instance → probe passed" from Cloud

@@ -6,7 +6,7 @@ import pytest
 
 from scout.agent import tools
 from scout.evals import smoke
-from scout.evals.run import grade, resolve
+from scout.evals.run import _has_number
 
 WIRTZ, OTHER = 598577, 132098
 FORECAST = {"predicted_change_pct": -18.6, "interval_80_pct": {"low": -40.9, "high": 20.5}}
@@ -39,8 +39,8 @@ def events(*calls, body=GOOD):
 
 
 def full(evts, served="2026-06-12", local="2026-06-12"):
-    """All checks for the case, as smoke.main computes them: the unchanged three, then (a) and (b)."""
-    checks = grade(CASE, resolve(CASE, None), evts) | smoke.forecast_check(CASE, evts, None, served, local)
+    """All checks for the case, exactly as smoke.main computes them."""
+    checks = smoke.grade_case(CASE, evts, None, served, local)
     return checks, smoke.verdict(checks)
 
 
@@ -78,12 +78,31 @@ def test_fail_when_no_qualifying_tool_call_appears():
         assert v == "FAIL" and checks["provenance"] is False and checks["forecast_numbers"], calls
 
 
-def test_rounding_follows_the_quote_rule():
-    # whole numbers are accepted; Python rounds half to even, so 20.5 -> 20 (and -40.9 -> 41, -18.6 -> 19)
-    whole = "The model forecasts a change of -19% over the next 12 months; the 80% interval runs from -41% to +20%."
-    assert full(events(("predict_value_change", {"player_id": WIRTZ}), body=whole))[1] == "PASS"
-    for wrong in [whole.replace("+20%", "+21%"), whole.replace("-19%", "-18.5%")]:
-        assert full(events(("predict_value_change", {"player_id": WIRTZ}), body=wrong))[1] == "FAIL", wrong
+def test_whole_numbers_within_half_a_point_match_inclusive():
+    assert smoke.smoke_has_number("about 20%", 20.5) and smoke.smoke_has_number("about 21%", 20.5)
+    assert smoke.smoke_has_number("a fall of 40%", -40.5) and smoke.smoke_has_number("a fall of 41%", -40.5)
+    assert smoke.smoke_has_number("about 20%", 20.4) and not smoke.smoke_has_number("about 21%", 20.4)
+    assert smoke.smoke_has_number("-19%", -18.6) and not smoke.smoke_has_number("-18%", -18.6)  # 0.6 away
+    # numbers with decimals must match to one decimal; no tolerance for them
+    assert smoke.smoke_has_number("+20.5%", 20.5) and not smoke.smoke_has_number("+20.4%", 20.5)
+    assert not smoke.smoke_has_number("-18.5%", -18.6)
+
+
+def test_the_held_out_rule_is_unchanged():
+    """run._has_number (dev and held-out evals) still rounds half to even: 20.5 -> 20 only."""
+    assert _has_number("about 20%", 20.5) and not _has_number("about 21%", 20.5)
+    assert _has_number("a fall of 40%", -40.5) and not _has_number("a fall of 41%", -40.5)
+
+
+def test_rounded_answers_pass_the_whole_case():
+    for upper in ["+20%", "+21%"]:  # the 20.5 bound written either way
+        whole = f"The model forecasts a change of -19% over the next 12 months; the 80% interval runs from -41% to {upper}."
+        checks, v = full(events(("predict_value_change", {"player_id": WIRTZ}), body=whole))
+        assert v == "PASS" and checks["quote"] and checks["forecast_numbers"], upper
+    for wrong in ["+22%", "-18.5%"]:
+        body = "The model forecasts a change of -19%; the 80% interval runs from -41% to +20%.".replace(
+            "+20%" if wrong == "+22%" else "-19%", wrong)
+        assert full(events(("predict_value_change", {"player_id": WIRTZ}), body=body))[1] == "FAIL", wrong
 
 
 def test_signs_may_be_written_as_words():

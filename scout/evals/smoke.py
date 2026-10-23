@@ -12,6 +12,10 @@ predict_value_change for the player (computed here, from the local demo data; sa
 three values for the player. (b) is graded only if the deployed data date (/meta) equals the local one; otherwise the
 case is NOT GRADED, never passed or failed.
 
+Number matching in the smoke checks (`quote` and `forecast_numbers`; pre-registered 2026-10-23): a number quoted with
+decimals must equal the value to one decimal; a whole number matches if it is within 0.5 of the value, inclusive
+(20.5 -> 20 or 21; 20.4 -> 20 only). The held-out and dev evals keep run._has_number (Python round, half to even).
+
 Usage: uv run --env-file .env python -m scout.evals.smoke --url-env SCOUT_DEMO_URL [--max-usd 0.05]
 """
 import argparse
@@ -23,13 +27,29 @@ import urllib.request
 from pathlib import Path
 
 from scout.agent import tools
+from scout.agent.numbers import numbers
 from scout.data.manifest import ROOT, git_commit
-from scout.evals.run import _has_number, grade, resolve
+from scout.evals.run import grade, resolve
 
 CASES = Path(__file__).with_name("smoke.jsonl")
 SPACING_S = 16
 FORECAST_CHECK = "v2 (pre-registered 2026-10-22)"
 PROVENANCE_TOOLS = ("search_players", "predict_value_change")
+WHOLE_NUMBER_TOLERANCE = 0.5  # smoke checks only (pre-registered 2026-10-23)
+
+
+def smoke_has_number(answer: str, value: float) -> bool:
+    """`value` quoted as given (one decimal), or as a whole number within 0.5 of it, inclusive. Signs are ignored, as in
+    run._has_number (a sign may be written as a word: "a fall of 18.6%")."""
+    target = abs(value)
+    for token in numbers(answer):
+        n = float(token.replace(",", ""))
+        if "." in token:
+            if abs(n - round(target, 1)) < 1e-9:
+                return True
+        elif abs(n - target) <= WHOLE_NUMBER_TOLERANCE + 1e-9:
+            return True
+    return False
 
 
 def expected_forecast(db, player_id: int) -> tuple[float, float, float]:
@@ -53,7 +73,7 @@ def forecast_check(case: dict, events: list[dict], db, served_as_of: str, local_
     pid = case["forecast_provenance"]["player_id"]
     expected = expected_forecast(db, pid)
     text = events[-1].get("body") or events[-1].get("text", "")
-    out = {"forecast_numbers": all(_has_number(text, v) for v in expected)}
+    out = {"forecast_numbers": all(smoke_has_number(text, v) for v in expected)}
     if served_as_of != local_as_of:
         out["provenance"] = None  # re-running tools against other data proves nothing
         return out
@@ -69,6 +89,18 @@ def forecast_check(case: dict, events: list[dict], db, served_as_of: str, local_
         found = found or (got is not None and all(abs(g - x) < 1e-9 for g, x in zip(got, expected)))
     out["provenance"] = found
     return out
+
+
+def grade_case(case: dict, events: list[dict], db, served_as_of: str, local_as_of: str) -> dict:
+    """All checks for one smoke case: run.py's checks, `quote` re-graded with the smoke matching rule, then the
+    forecast check v2 where the case asks for it."""
+    expected = resolve(case, db)
+    checks = grade(case, expected, events)
+    if expected["quote"] and "quote" in checks:
+        checks["quote"] = all(smoke_has_number(events[-1].get("text", ""), v) for v in expected["quote"])
+    if case.get("forecast_provenance"):
+        checks |= forecast_check(case, events, db, served_as_of, local_as_of)
+    return checks
 
 
 def verdict(checks: dict) -> str:
@@ -114,9 +146,7 @@ def main() -> None:
             status, events, secs = ask(url, case["question"])
             if status != 200 or not events:
                 raise SystemExit(f"{case['id']}: HTTP {status}; stopping (no retries against the public limits)")
-            checks = grade(case, resolve(case, db), events)
-            if case.get("forecast_provenance"):
-                checks |= forecast_check(case, events, db, served, local)
+            checks = grade_case(case, events, db, served, local)
             spent += events[-1].get("cost_usd") or 0.0
             rows.append({"case": case, "events": events, "checks": checks, "secs": secs})
             print(f"{case['id']}: {verdict(checks)} {events[-1]['type']} {secs:.1f}s", flush=True)
