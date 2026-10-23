@@ -215,6 +215,26 @@ def test_the_number_check_reads_the_body_the_user_sees(wiki):
     assert events[-1]["type"] == "answer" and "999" not in events[-1]["body"]
 
 
+def test_a_contradicting_direction_is_retried_then_blocked_and_logged():
+    client = FakeClient(tool_use("predict_value_change", {"player_id": 132098}),
+                        text("The model forecasts a rise of 38.4% (80% interval: -57.4% to -7.6%)."),
+                        text("The model forecasts +38.4% over the next 12 months."))
+    events, tracer = run(client)
+    assert events[-1]["type"] == "blocked"
+    assert tracer.violations == [("direction_check", ["38.4"], "retried"), ("direction_check", ["38.4"], "blocked")]
+    feedback = client.requests[2]["messages"][-1]["content"]
+    assert "contradicts the tool results for: 38.4%" in feedback
+
+
+def test_a_contradiction_fixed_on_retry_is_released_with_one_logged_violation():
+    client = FakeClient(tool_use("predict_value_change", {"player_id": 132098}),
+                        text("The interval runs from -57.4% to +7.6%."),
+                        text("The model forecasts a 38.4% fall (80% interval: -57.4% to -7.6%)."))
+    events, tracer = run(client)
+    assert events[-1]["type"] == "answer" and "38.4% fall" in events[-1]["body"]
+    assert tracer.violations == [("direction_check", ["7.6"], "retried")]
+
+
 def test_answers_without_wikipedia_get_no_footer():
     client = FakeClient(text("I only cover 7 leagues."))
     events, _ = run(client, question="Weather?")

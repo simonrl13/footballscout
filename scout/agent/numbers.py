@@ -3,8 +3,10 @@
 A number in the answer is supported if some source number, shown with the same number of decimals, equals it
 (so 38.4 supports "38.4" and "38"; a whole number may also truncate: 40.8 supports "40"), or the same holds for the
 source × 10^6 ("EUR 60.0m" supports "60,000,000").
-Signs are ignored: "a fall of 38.4%" quotes -38.4.
+Signs are ignored here: "a fall of 38.4%" quotes -38.4. Directions are checked separately (contradictions(), since
+2026-10-23): a percentage whose stated direction contradicts the tool results is caught even when its magnitude matches.
 """
+import json
 import re
 
 # 1,234,567.8 | 1234.5 | 12 ; not glued to letters/underscores on the left (keys like interval_80_pct)
@@ -88,6 +90,50 @@ def directed_numbers(text: str) -> list[tuple[str, int | None]]:
                     direction = None if negated else _word_direction(after.group(1))
         out.append((m.group(), direction))
         prev_end = e
+    return out
+
+
+PERCENT_AFTER = re.compile(r"\s*(?:%|percent\b|per cent\b)")
+
+
+def _source_values(source: str) -> list[tuple[float, int | None]]:
+    """(magnitude, sign) of every number a source supports. Only numbers in a tool result's JSON have a known sign
+    (-18.6 is -1); numbers in text (the question, the system prompt, strings such as Wikipedia passages) are None."""
+    try:
+        data = json.loads(source)
+    except ValueError:
+        return [(float(n.replace(",", "")), None) for n in numbers(source)]
+    out = []
+
+    def walk(x):
+        if isinstance(x, bool):
+            return
+        if isinstance(x, (int, float)):
+            out.append((abs(float(x)), (x > 0) - (x < 0) or None))
+        elif isinstance(x, str):
+            out.extend((float(n.replace(",", "")), None) for n in numbers(x))
+        elif isinstance(x, dict | list):
+            for v in (x.values() if isinstance(x, dict) else x):
+                walk(v)
+    walk(data)
+    return out
+
+
+def contradictions(answer: str, sources: list[str]) -> list[str]:
+    """Percentages in `answer` whose stated direction (a sign or a direction word, see directed_numbers) contradicts
+    every source value they match, e.g. "a rise of 18.6%" when the only 18.6 in the tool results is -18.6. Clear
+    contradictions only: no direction, an ambiguous one, a matching value of unknown sign, or matching values of both
+    signs all pass. Magnitudes match as in unsupported()."""
+    values = [v for s in sources for v in _source_values(s)]
+    text, out = LIST_MARKER.sub("", answer), []
+    for m, (token, direction) in zip(NUMBER.finditer(text.lower()), directed_numbers(text)):
+        if direction is None or not PERCENT_AFTER.match(text, m.end()):
+            continue
+        x = float(token.replace(",", ""))
+        decimals = len(token.split(".")[1]) if "." in token else 0
+        signs = [sign for a, sign in values if round(a, decimals) == x or (decimals == 0 and int(a) == x)]
+        if signs and all(sign is not None and sign != direction for sign in signs):
+            out.append(token)
     return out
 
 

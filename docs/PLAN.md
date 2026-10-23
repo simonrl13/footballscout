@@ -381,7 +381,7 @@ limit **$10/month** (owner, Anthropic Console), GCP budget alert at **$1** (owne
   text-only rendering of model output, Wikipedia-only source links from structured fields, waking notice after 5 s,
   429 explained; owner checks it on a real phone. After merge and deploy: rerun the 5 pre-registered smoke questions
   (not the held-out set) and report.
-- [ ] **Number-check direction (fix 2; planned 2026-10-23, owner; own PR, not built yet).** The production number check
+- [ ] **Number-check direction (fix 2; planned 2026-10-23, owner; built 2026-10-23 in its own PR, validated on recordings; deploy pending).** The production number check
   (`numbers.unsupported`) ignores signs: "a rise of 18.6%" passes for a forecast of -18.6. Plan: apply
   `directed_numbers` there, flagging only clear contradictions (a stated direction against every matching source
   value's sign); ambiguous or undirected numbers pass as today. Contradictions go through the existing
