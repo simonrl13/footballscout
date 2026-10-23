@@ -337,6 +337,25 @@ limit **$10/month** (owner, Anthropic Console), GCP budget alert at **$1** (owne
   - **Decision rule:** a smoke check, not a threshold: 5/5 is expected. Any failure is reported with its answer and
     investigated before the link is shared; nothing is tuned on this set, and the held-out set is not run against
     production.
+  - **Revision of the forecast check (pre-registered 2026-10-22, owner; future runs only).** Run 2 (2026-10-22,
+    `reports/m7_smoke_2026-10-22_page.md`) failed `sm-forecast` on `tools` with a correct answer: `search_players`
+    also returns the forecast and interval, so requiring a `predict_value_change` call encoded a tool-path assumption.
+    From the next run, `sm-forecast` passes only if all of:
+    - **(a) Numbers:** the answer contains the predicted change and both 80% interval bounds for Florian Wirtz
+      (player 598577), each matching `predict_value_change` for that player. The eval computes the three expected
+      values itself from the local demo data at run time (no hard-coded numbers). Matching rule unchanged from the
+      existing `quote` check: the value as given (one decimal) or rounded to a whole number; a sign may be written
+      as a word ("a fall of").
+    - **(b) Provenance:** the run's stream shows at least one `search_players` or `predict_value_change` call whose
+      result, recomputed by the eval from that call's logged input against the same demo data, contains all three
+      expected values for player 598577. (The released answer has also passed the production number check, which
+      requires every number to come from a tool result, the question or the fixed facts.)
+    - **(c) Unchanged:** `outcome` (an answer is released), `quote` (the predicted change quoted) and `interval`
+      ("80%" mentioned), as in the original pre-registration.
+    - The `tools: [predict_value_change]` check is removed. The other four cases are unchanged. The question is the
+      same. Implemented and unit-tested in a separate PR before the next run, without running the smoke set; that
+      run's report states the check version.
+    - **Past results stand:** run 1 5/5 (`reports/m7_smoke.md`), run 2 4/5. They are not regraded.
 - [x] Slim API image (owner, 2026-10-22; #53; measured on Cloud Run 2026-10-22: startup 9.6 s rollout / 12.7 s cold, cold `/ask` 19.1 s; latency work stopped): pandas/numpy out, uv only at build time, bytecode
   for exactly what startup imports. After the deploy: the rollout's "Starting new instance → probe passed" from Cloud
   Run's startup logs (owner) against 7.3–8.4 s before #51 and 12.9–15.4 s with #51, then one cold `/ask` after 30+
