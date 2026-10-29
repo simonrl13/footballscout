@@ -741,6 +741,63 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 - **History:** run 1 5/5 (`2159956`), run 2 4/5 (`953862b`, v1 tool check), run 3 5/5 (`f9e228b`, v2). Past results
   stand.
 
+### 2026-10-29 — PRE-REGISTRATION: keyword vs vector vs hybrid retrieval for search_text (before any run)
+- **Question:** Does embedding-based or hybrid retrieval rank the passage that answers a question higher than the
+  current Postgres full-text search, at an acceptable latency, without hurting the agent?
+- **Corpus and units:** the 37,375 `text_passages` rows (2,616 players' Wikipedia pages as of the demo date; median 11
+  passages per player, p90 28, max 113). Every mode ranks these same rows; no new chunking.
+- **Modes (`RETRIEVAL_MODE`):**
+  - *keyword*: today's `search_text` SQL (`websearch_to_tsquery` over the question's words joined with `or`, ranked by
+    `ts_rank_cd`), unchanged.
+  - *vector*: cosine distance between the question embedded as a query and the passages embedded as documents, Voyage
+    `voyage-4-lite`, 1024 dimensions, stored as `halfvec`.
+  - *hybrid*: reciprocal rank fusion of the top 50 keyword and top 50 vector results, score = Σ 1/(k + rank).
+  - *hybrid_rerank*: the top N fused results reranked by Voyage `rerank-2.5-lite`.
+  - No local models (owner, 2026-10-29).
+- **Questions:** the 36 in `scout/evals/text.jsonl` (pre-registered 2026-10-15), the question text verbatim as the
+  query, the same k for every mode. Two scopes: **within the question's player** (`player_id` set, as the agent
+  usually calls it; primary) and **corpus-wide** (no `player_id`; second headline).
+- **Tuning on a separate dev split, never on the 36:** 24 new questions from `text_set.py`'s rules with a new seed
+  (20261029), 4 per type and band (4 × 2 types × 3 bands), players disjoint from the 36. Their gold is the string-match proposal only (not reviewed). RRF k ∈ {10, 30, 60} chosen by within-player MRR
+  on the dev split; then rerank N ∈ {10, 20, 30} the same way, with that k. Ties go to the smaller value. The chosen
+  values are committed before any of the 36 is retrieved.
+- **Gold passages (relevant = the passage states the answer for that player: the club joined in that window, or the
+  contract's expiry year):**
+  1. *String match*: passages on the player's page with an accepted club alias as whole words (accents folded) and the
+     year or a season containing it ("2018", "2018–19"); for contracts, the expiry year in a passage that mentions a
+     contract (contract, extension, extended, signed, until, deal).
+  2. *Pooling*: the top 10 of every mode in both scopes. Passages from other players' pages enter the pool only if they
+     contain the player's surname (folded); the rest are counted not relevant.
+  3. The owner reviews the union, blind to which mode or method proposed each passage (shuffled, seeded). The gold file
+     records each passage's origin (string match, pool, or both) and the owner's label; it is frozen with a SHA-256
+     hash before any metric is computed. Questions with no relevant passage are listed and left out of the metrics
+     (n reported).
+  - The 36 are retrieved once per mode for pooling before labels exist; metrics come only after the freeze. Results stay
+    **"provisional, pending label review"** until the owner approves the labels.
+- **Metrics:** primary **MRR within the player** (first relevant passage, top 10; 0 if none); secondary hits@1 within
+  the player, hits@3/5/10 and MRR within the player; corpus-wide MRR and hits@5 (second headline) and hits@1/3/10;
+  median and p95 latency per query (wall clock, including the Voyage calls); cost per query from the API's token counts.
+  Baseline: random ranking of the same candidates, computed exactly (expected reciprocal rank and hits@k given each
+  question's passage count and number of relevant passages). The passages-per-player distribution is reported.
+- **Tests:** exact two-sided McNemar on paired hits@1 within the player (each mode vs keyword); MRR differences with a
+  paired sign-flip permutation test (100,000 draws, seed 20261029), descriptive.
+- **Switching rule** (also in PLAN.md M8): a mode replaces keyword as the default only if (1) more questions have the
+  first relevant passage at rank 1 than with keyword, with McNemar p < 0.05 on the 36 pairs (6 net wins with no losses;
+  8–1 or 10–2 with losses); (2) its MRR within the player is higher; (3) its p95 latency is at most 500 ms above
+  keyword's; (4) no agent-eval regression. Otherwise keyword stays, written up as a negative result.
+- **Agent eval with the best mode (local server, live demo unchanged):** first the dev set (37) and the smoke set (5);
+  then, only after the owner's OK, the held-out 20 once (this milestone's use). No regression means: the same or more
+  passes than the latest keyword result on each set (dev 37/37, smoke 5/5, held-out per `docs/evals/HELDOUT_LOG.md`),
+  injection cases resisted 100%, and zero number-check violations reaching the user. Pass counts are reported exactly.
+- **Not touched:** the model test set, `evaluate_test.py`, `docs/TEST_LOG.md`.
+- **Known limitations:** 36 questions detect only large differences; within a player most pages are short (median 11
+  passages), so random ranking is a strong baseline there; the gold depends on what the pooled modes retrieved; the
+  questions come from Transfermarkt facts, so they favour passages that name a club or a year, where keyword search is
+  strong.
+- **Cost estimate:** the corpus is 11.04M characters (about 2.8M tokens at 4 characters a token; exact count before the
+  run). voyage-4-lite at US$0.02 per million tokens is under US$0.10 and inside the 200M free tokens; queries and
+  reranks are a few thousand tokens. Agent runs: about 62 at about US$0.002.
+
 ---
 
 ## Paper notes

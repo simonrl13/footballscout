@@ -399,6 +399,33 @@ limit **$10/month** (owner, Anthropic Console), GCP budget alert at **$1** (owne
   - [ ] **Due 2026-12-15:** decide before the GCP trial ends (2027-01-01) whether to upgrade the billing account with
     hard caps, or to replace the live demo with a static page and the walkthrough video.
 
+### M8: keyword vs vector vs hybrid retrieval (plan approved 2026-10-29; branch `m8/hybrid-retrieval`)
+
+Pre-registered here and in docs/RESEARCH_LOG.md (2026-10-29) before any retrieval or agent run. The live demo keeps
+`RETRIEVAL_MODE=keyword` until the owner approves the results.
+
+- [ ] Pre-registration (this entry and the RESEARCH_LOG entry), committed before any run.
+- [ ] `RETRIEVAL_MODE` = keyword | vector | hybrid | hybrid_rerank behind one interface (`scout/text/retrieve.py`);
+  `search_text` keeps its input and output contract; keyword output and the citation footer byte-identical (test).
+- [ ] pgvector table `text_embeddings` on local Postgres (loader writes, reader SELECT only); chunks = the existing
+  `text_passages` rows; idempotent ingestion; recipe in `data/embeddings_manifest.json`.
+- [ ] Embeddings: Voyage `voyage-4-lite` over REST (urllib, no new package). Rerank: Voyage `rerank-2.5-lite`. No local
+  models. Exact token count and cost reported to the owner before the embedding run (owner OK required).
+- [ ] Storage measured locally with `pg_total_relation_size` at 1024 and 512 dimensions; **no Neon change without the
+  owner's OK.**
+- [ ] Dev split (24 questions, new seed, players disjoint from `text.jsonl`) to choose RRF k and rerank N.
+- [ ] Gold: string-match proposals plus pooled top 10 from every mode and scope, reviewed blind by the owner, frozen
+  with a hash. Results are "provisional, pending label review" until the owner approves the labels.
+- [ ] Report (`reports/retrieval.md`), MLflow runs, README "Retrieval: keyword vs hybrid", SECURITY.md (Voyage receives
+  visitor questions in vector/hybrid modes; retention terms with source).
+- [ ] Agent eval with the best mode on a local server: dev set (37) and smoke set (5) first; held-out 20 once, only
+  after the owner's OK (this milestone's use).
+- **Switching rule (fixed in advance):** the default changes from keyword to a mode only if, on the 36 questions within
+  the question's player, (1) it has more questions with the first relevant passage at rank 1 than keyword, and the exact
+  two-sided McNemar test on those paired hits@1 gives p < 0.05 (with no losses that takes 6 net wins; with losses more,
+  e.g. 8–1, 10–2); (2) its MRR within the player is higher; (3) its p95 latency is at most 500 ms above keyword's;
+  (4) the agent eval shows no regression (below). Otherwise keyword stays and the result is written up as negative.
+
 ---
 
 ## 4. Budget and what to cut
