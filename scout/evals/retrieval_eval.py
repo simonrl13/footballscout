@@ -2,7 +2,8 @@
 
 Steps, in the pre-registered order:
   --tune     dev split (retrieval_dev.jsonl, string-match gold): RRF k, then rerank N, by within-player MRR
-  --propose  string-match proposals + the pooled top 10 of every mode and scope for the 36 questions (text.jsonl):
+  --propose  string-match proposals + the pooled top 10 of every mode and scope for the eval questions (the
+             original 36 in text.jsonl and the extension in retrieval_extra.jsonl, amendment 2026-10-29):
              a blind review file (docs/evals/retrieval_review.md); the candidates' origins (retrieval_candidates.json)
   --freeze   the owner's marks -> retrieval_gold.jsonl (origin + label per passage) and its SHA-256
   (none)     metrics on the 36 with the frozen gold -> reports/retrieval.md and MLflow
@@ -29,7 +30,7 @@ from scout.text.embed import MANIFEST as EMB_MANIFEST
 from scout.text.fold import fold
 
 EVALS = ROOT / "scout" / "evals"
-QUESTIONS, DEV = EVALS / "text.jsonl", EVALS / "retrieval_dev.jsonl"
+QUESTIONS, EXTRA, DEV = EVALS / "text.jsonl", EVALS / "retrieval_extra.jsonl", EVALS / "retrieval_dev.jsonl"
 CANDIDATES, GOLD, TUNED = EVALS / "retrieval_candidates.json", EVALS / "retrieval_gold.jsonl", EVALS / "retrieval_tuned.json"
 REVIEW, REPORT = ROOT / "docs" / "evals" / "retrieval_review.md", ROOT / "reports" / "retrieval.md"
 DEPTH, KS, SEED = 10, (1, 3, 5, 10), 20261029
@@ -137,7 +138,7 @@ def propose() -> None:
     """Union of string-match proposals and the pooled top DEPTH of every mode and scope, per question; the review file
     shows them shuffled (seeded) with no mode or method."""
     k, n = tuned()
-    cases, out, review = load(QUESTIONS), {}, []
+    cases, out, review = eval_cases(), {}, []
     with tools.connect() as conn:
         for c in cases:
             own = passages(conn, "player_id = %s", (c["player_id"],))
@@ -235,9 +236,17 @@ def paired(rows: list[dict], gold: dict, mode: str, scope: str) -> dict:
             "mrr_diff": sum(diffs) / len(diffs), "perm_p": perm_p(diffs)}
 
 
+def eval_cases() -> list[dict]:
+    """The original 36 and the extension (amendment 2026-10-29), in that order."""
+    return load(QUESTIONS) + [{**c, "extension": True} for c in load(EXTRA)]
+
+
+SETS = {"extended": lambda c: True, "original": lambda c: not c.get("extension")}  # the rule applies to "extended"
+
+
 def evaluate(labels_approved: bool) -> None:
     k, n = tuned()
-    cases = load(QUESTIONS)
+    cases = eval_cases()
     gold, rows = gold_sets(cases), []
     with tools.connect() as conn:
         corpus = conn.execute("SELECT count(*) AS n FROM text_passages").fetchone()["n"]
@@ -254,10 +263,13 @@ def evaluate(labels_approved: bool) -> None:
                                  "rank": next((i for i, x in enumerate(ranked, 1) if x in rel), None),
                                  "rr": rr(ranked, rel), **{f"hits@{q}": hits(ranked, rel, q) for q in KS}})
                 print(mode, scope, "done", flush=True)
-    summary = summarize(rows, gold, sizes)
-    tests = {(m, s): paired(rows, gold, m, s) for m in retrieve.MODES[1:] for s in SCOPES}
-    write_report(cases, rows, gold, sizes, per_player, summary, tests, k, n, labels_approved)
-    log_mlflow(summary, tests, k, n, labels_approved)
+    results = {}
+    for name, keep in SETS.items():
+        ids = {c["id"] for c in cases if keep(c)}
+        sub, g = [r for r in rows if r["id"] in ids], {i: gold[i] for i in ids}
+        results[name] = (summarize(sub, g, sizes), {(m, s): paired(sub, g, m, s) for m in retrieve.MODES[1:] for s in SCOPES})
+    write_report(cases, rows, gold, sizes, per_player, results, k, n, labels_approved)
+    log_mlflow(results, k, n, labels_approved)
 
 
 def decision(summary: dict, tests: dict, mode: str) -> list[str]:
@@ -270,58 +282,72 @@ def decision(summary: dict, tests: dict, mode: str) -> list[str]:
             + ("met" if s["p95_ms"] <= kw["p95_ms"] + 500 else "not met")]
 
 
-def write_report(cases, rows, gold, sizes, per_player, summary, tests, k, n, labels_approved) -> None:
+def tables(summary: dict, tests: dict, scope: str) -> list[str]:
+    lines = ["| Mode | n | MRR | hits@1 | hits@3 | hits@5 | hits@10 | median ms | p95 ms | US$ per query |",
+             "|---|---|---|---|---|---|---|---|---|---|"]
+    for mode in (*retrieve.MODES, "random"):
+        m = summary[mode, scope]
+        lat = "– | – | –" if mode == "random" else f"{m['median_ms']:.0f} | {m['p95_ms']:.0f} | {m['cost_usd']:.6f}"
+        lines.append(f"| {mode} | {m['n']} | {m['mrr']:.3f} | " + " | ".join(f"{m[f'hits@{x}']:.2f}" for x in KS)
+                     + f" | {lat} |")
+    lines += ["", "| vs keyword | hits@1 wins | losses | McNemar p | MRR difference | permutation p |",
+              "|---|---|---|---|---|---|"]
+    for mode in retrieve.MODES[1:]:
+        t = tests[mode, scope]
+        lines.append(f"| {mode} | {t['wins']} | {t['losses']} | {t['mcnemar_p']:.3f} | {t['mrr_diff']:+.3f} | "
+                     f"{t['perm_p']:.3f} |")
+    return lines + [""]
+
+
+def write_report(cases, rows, gold, sizes, per_player, results, k, n, labels_approved) -> None:
     q = statistics.quantiles(per_player, n=10, method="inclusive")
     mine = sorted(sizes[c["id"]]["player"] for c in cases)
+    n_ext = sum(bool(c.get("extension")) for c in cases)
     lines = ["# Retrieval: keyword vs vector vs hybrid", ""]
     if not labels_approved:
         lines += [PROVISIONAL, ""]
-    lines += [f"Commit `{git_commit()}`, {time.strftime('%Y-%m-%d')}. Pre-registration: docs/RESEARCH_LOG.md (2026-10-29). "
-              f"Questions: `scout/evals/text.jsonl` (36); query = the question verbatim; top {DEPTH}. Gold: "
-              f"`scout/evals/retrieval_gold.jsonl` (sha256 `{sha256(GOLD)[:12]}`). RRF k = {k}, rerank N = {n} (chosen on the "
-              "dev split: `scout/evals/retrieval_tuned.json`). Embeddings voyage-4-lite (1024 dimensions), rerank "
-              "rerank-2.5-lite. Latency: wall clock against local Postgres, Voyage calls included. Generated by "
-              "`python -m scout.evals.retrieval_eval`.", "",
+    lines += [f"Commit `{git_commit()}`, {time.strftime('%Y-%m-%d')}. Pre-registration: docs/RESEARCH_LOG.md (2026-10-29, "
+              f"and its amendment). Questions: the original 36 (`scout/evals/text.jsonl`) and the extended set (+{n_ext} "
+              f"transfer questions, `scout/evals/retrieval_extra.jsonl`; {len(cases)} in all). Query = the question "
+              f"verbatim; top {DEPTH}. Gold: `scout/evals/retrieval_gold.jsonl` (sha256 `{sha256(GOLD)[:12]}`). "
+              f"RRF k = {k}, rerank N = {n} (chosen on the dev split: `scout/evals/retrieval_tuned.json`). Embeddings "
+              "voyage-4-lite (1024 dimensions), rerank rerank-2.5-lite. Latency: wall clock against local Postgres, "
+              "Voyage calls included. Generated by `python -m scout.evals.retrieval_eval`.", "",
               f"Passages per player (all {len(per_player):,} players): p10 {q[0]:.0f}, median "
-              f"{statistics.median(per_player):.0f}, p90 {q[8]:.0f}, max {max(per_player)}. The 36 questions' players: "
-              f"median {statistics.median(mine):.0f}, min {mine[0]}, max {mine[-1]}. Random = the exact expectation of a "
-              "random order of each question's candidates.", ""]
-    for scope, title in [("player", "Within the question's player (primary)"), ("corpus", "Corpus-wide")]:
-        lines += [f"## {title}", "",
-                  "| Mode | n | MRR | hits@1 | hits@3 | hits@5 | hits@10 | median ms | p95 ms | US$ per query |",
-                  "|---|---|---|---|---|---|---|---|---|---|"]
-        for mode in (*retrieve.MODES, "random"):
-            m = summary[mode, scope]
-            lat = "– | – | –" if mode == "random" else f"{m['median_ms']:.0f} | {m['p95_ms']:.0f} | {m['cost_usd']:.6f}"
-            lines.append(f"| {mode} | {m['n']} | {m['mrr']:.3f} | " + " | ".join(f"{m[f'hits@{x}']:.2f}" for x in KS)
-                         + f" | {lat} |")
-        lines += ["", "| vs keyword | hits@1 wins | losses | McNemar p | MRR difference | permutation p |",
-                  "|---|---|---|---|---|---|"]
-        for mode in retrieve.MODES[1:]:
-            t = tests[mode, scope]
-            lines.append(f"| {mode} | {t['wins']} | {t['losses']} | {t['mcnemar_p']:.3f} | {t['mrr_diff']:+.3f} | "
-                         f"{t['perm_p']:.3f} |")
-        lines.append("")
-    lines += ["## Switching rule (pre-registered), parts 1–3", ""]
+              f"{statistics.median(per_player):.0f}, p90 {q[8]:.0f}, max {max(per_player)}. The questions' players: median "
+              f"{statistics.median(mine):.0f}, min {mine[0]}, max {mine[-1]}. Random = the exact expectation of a random "
+              "order of each question's candidates. n = questions with a relevant passage in that scope.", ""]
+    for name, title in [("extended", f"Extended set ({len(cases)} questions; the switching rule applies here)"),
+                        ("original", "Original 36")]:
+        summary, tests = results[name]
+        lines += [f"## {title}", ""]
+        for scope, sub in [("player", "Within the question's player (primary)"), ("corpus", "Corpus-wide")]:
+            lines += [f"### {sub}", "", *tables(summary, tests, scope)]
+    summary, tests = results["extended"]
+    lines += ["## Switching rule (pre-registered, extended set), parts 1–3", ""]
     lines += [f"- **{mode}:** " + "; ".join(decision(summary, tests, mode)) for mode in retrieve.MODES[1:]]
-    no_gold = [c["id"] for c in cases if not gold[c["id"]]["player"]]
-    lines += ["", f"Questions with no relevant passage on the player's page (left out of the within-player metrics): "
-              f"{len(no_gold)}" + (f" ({', '.join(no_gold)})" if no_gold else "") + ".", "",
+    contracts = [c for c in cases if c["type"] == "contract"]
+    missing = [c["id"] for c in contracts if not gold[c["id"]]["player"]]
+    other = [c["id"] for c in cases if c["type"] != "contract" and not gold[c["id"]]["player"]]
+    lines += ["", "## Coverage finding (not retrieval misses)", "",
+              f"Contract questions whose answer (the June 2026 expiry year) no passage on the player's page states: "
+              f"**{len(missing)} of {len(contracts)}** ({', '.join(missing) or 'none'}). They are left out of hits@k and MRR. "
+              f"Transfer questions with no relevant passage on the page: {len(other)} ({', '.join(other) or 'none'}).", "",
               "## Per question: rank of the first relevant passage in the top 10 (– none)", "",
-              "| Question | Page passages | Relevant (page / corpus) | "
+              "| Question | Set | Page passages | Relevant (page / corpus) | "
               + " | ".join(f"{m} ({s})" for s in SCOPES for m in retrieve.MODES) + " |",
-              "|---|---|---|" + "---|" * (len(SCOPES) * len(retrieve.MODES))]
+              "|---|---|---|---|" + "---|" * (len(SCOPES) * len(retrieve.MODES))]
     by = {(r["id"], r["mode"], r["scope"]): r for r in rows}
     for c in cases:
         g = gold[c["id"]]
         cells = [str(by[c["id"], m, s]["rank"] or "–") for s in SCOPES for m in retrieve.MODES]
-        lines.append(f"| {c['id']} | {sizes[c['id']]['player']} | {len(g['player'])} / {len(g['corpus'])} | "
-                     + " | ".join(cells) + " |")
+        lines.append(f"| {c['id']} | {'extension' if c.get('extension') else 'original'} | {sizes[c['id']]['player']} | "
+                     f"{len(g['player'])} / {len(g['corpus'])} | " + " | ".join(cells) + " |")
     REPORT.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
-    print("\n".join(lines[:45]))
+    print("\n".join(lines[:60]))
 
 
-def log_mlflow(summary, tests, k, n, labels_approved) -> None:
+def log_mlflow(results, k, n, labels_approved) -> None:
     import mlflow
 
     from scout.ml.tracking import start_run
@@ -330,11 +356,14 @@ def log_mlflow(summary, tests, k, n, labels_approved) -> None:
             "labels": "approved" if labels_approved else "provisional, pending label review"}
     with start_run("retrieval eval (M8)", tags=tags):
         mlflow.log_params({"rrf_k": k, "rerank_n": n, "depth": DEPTH, "embed_model": retrieve.EMBED_MODEL,
-                           "rerank_model": retrieve.RERANK_MODEL, "questions": "scout/evals/text.jsonl"})
-        for (mode, scope), m in summary.items():
-            mlflow.log_metrics({f"{mode}_{scope}_{x.replace('@', '_at_')}": v for x, v in m.items() if x != "n"})
-        for (mode, scope), t in tests.items():
-            mlflow.log_metrics({f"{mode}_{scope}_mcnemar_p": t["mcnemar_p"], f"{mode}_{scope}_perm_p": t["perm_p"]})
+                           "rerank_model": retrieve.RERANK_MODEL,
+                           "questions": "scout/evals/text.jsonl + scout/evals/retrieval_extra.jsonl"})
+        for name, (summary, tests) in results.items():
+            for (mode, scope), m in summary.items():
+                mlflow.log_metrics({f"{name}_{mode}_{scope}_{x.replace('@', '_at_')}": v for x, v in m.items() if x != "n"})
+            for (mode, scope), t in tests.items():
+                mlflow.log_metrics({f"{name}_{mode}_{scope}_mcnemar_p": t["mcnemar_p"],
+                                    f"{name}_{mode}_{scope}_perm_p": t["perm_p"]})
         mlflow.log_artifact(str(REPORT))
 
 
