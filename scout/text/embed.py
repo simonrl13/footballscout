@@ -58,11 +58,29 @@ def with_backoff(embed_fn, texts: list[str], tries: int = 10):
                 raise
             wait = float(e.headers.get("Retry-After") or 65)  # Voyage limits are per minute
             print(f"rate limited (429), waiting {wait:.0f} s", flush=True)
+        except (TimeoutError, urllib.error.URLError) as e:  # network hiccup; HTTPError is caught above
+            if attempt == tries - 1:
+                raise
+            wait = 65
+            print(f"network error ({type(e).__name__}), waiting {wait} s", flush=True)
             time.sleep(wait)
 
 
+def batches(todo: list[tuple], size: int, max_chars: int | None = None):
+    """Consecutive groups of at most `size` passages and (if given) `max_chars` characters; a longer passage goes alone."""
+    batch, chars = [], 0
+    for item in todo:
+        if batch and (len(batch) == size or (max_chars and chars + len(item[2]) > max_chars)):
+            yield batch
+            batch, chars = [], 0
+        batch.append(item)
+        chars += len(item[2])
+    if batch:
+        yield batch
+
+
 def ingest(conn, embed_fn=retrieve.embed, model: str = retrieve.EMBED_MODEL, version: str = "", max_usd: float = 0.20,
-           limit: int | None = None, batch_size: int = BATCH, pace: float = 0) -> dict:
+           limit: int | None = None, batch_size: int = BATCH, pace: float = 0, max_chars: int | None = None) -> dict:
     """Embeds what `pending` returns (the first `limit` if given), deletes orphaned rows; returns counts and tokens."""
     conn.execute((ROOT / "db" / "embeddings.sql").read_text())  # static DDL, idempotent
     gone = conn.execute("""DELETE FROM text_embeddings e WHERE e.model = %s AND NOT EXISTS
@@ -71,13 +89,12 @@ def ingest(conn, embed_fn=retrieve.embed, model: str = retrieve.EMBED_MODEL, ver
     conn.commit()
     todo, total = pending(conn, model)
     todo = todo[:limit] if limit is not None else todo
-    tokens = 0
-    for i in range(0, len(todo), batch_size):
+    tokens, done = 0, 0
+    for n, batch in enumerate(batches(todo, batch_size, max_chars)):
         if tokens * PRICE_PER_MTOK / 1e6 >= max_usd:
             raise SystemExit(f"stopping: {tokens:,} tokens reached --max-usd {max_usd} (rerun resumes)")
-        if i and pace:
+        if n and pace:
             time.sleep(pace)  # stays under per-minute limits (no payment method: 3 requests, 10K tokens per minute)
-        batch = todo[i:i + batch_size]
         vectors, used = with_backoff(embed_fn, [t for _, _, t, _ in batch])
         tokens += used
         with conn.cursor() as cur:
@@ -89,7 +106,8 @@ def ingest(conn, embed_fn=retrieve.embed, model: str = retrieve.EMBED_MODEL, ver
                     embedding = EXCLUDED.embedding, created_at = now()""",
                 [(d, c, model, version, retrieve.EMBED_DIM, t, h, str(v)) for (d, c, t, h), v in zip(batch, vectors)])
         conn.commit()
-        print(f"{min(i + batch_size, len(todo)):,}/{len(todo):,} embedded, {tokens:,} tokens", flush=True)
+        done += len(batch)
+        print(f"{done:,}/{len(todo):,} embedded, {tokens:,} tokens", flush=True)
     return {"passages": total, "embedded": len(todo), "deleted": gone, "tokens": tokens}
 
 
@@ -117,6 +135,7 @@ def main() -> None:
     ap.add_argument("--count", action="store_true", help="what would be embedded (characters), no API call")
     ap.add_argument("--max-usd", type=float, default=0.20)
     ap.add_argument("--batch", type=int, default=BATCH, help="passages per request")
+    ap.add_argument("--max-chars", type=int, help="characters per request (token limits)")
     ap.add_argument("--pace", type=float, default=0, help="seconds between requests")
     args = ap.parse_args()
     with store.connect() as conn:
@@ -128,7 +147,8 @@ def main() -> None:
             print(f"{len(todo):,} of {total:,} passages to embed, {chars:,} characters")
             return
         run = ingest(conn, version=f"API, embedded {time.strftime('%Y-%m-%d', time.gmtime())}", max_usd=args.max_usd,
-                     batch_size=args.batch, pace=args.pace)
+                     batch_size=args.batch, pace=args.pace,
+                     max_chars=args.max_chars)
         write_manifest(conn, run)
     print(f"done: {run}; cost at list price US${run['tokens'] * PRICE_PER_MTOK / 1e6:.4f}")
 

@@ -1,0 +1,96 @@
+{
+ "what": "Voyage embeddings of the text_passages rows (derived data; table text_embeddings)",
+ "chunking": {
+  "source": "scout/text/passages.py",
+  "unit": "paragraph, long ones cut at sentence ends",
+  "max_chars": 1200,
+  "min_chars": 40,
+  "embedded_text": "section name, newline, passage body (scout.text.retrieve.chunk_text)"
+ },
+ "model": "voyage-4-lite",
+ "dimension": 1024,
+ "storage": "halfvec(1024)",
+ "input_type": "document (queries: query)",
+ "price_usd_per_mtok": 0.02,
+ "corpus_sha256": "9c1479b2643544e29be2c6fba04ca128b4775298a05c44aa579b87bfae83f99d",
+ "rows": 37375,
+ "voyage_account": {
+  "training_opt_out": false,
+  "payment_method": false,
+  "as_reported_by_owner": "2026-10-30",
+  "meaning": "Voyage default: inputs may be stored and used to train its models (docs.voyageai.com/docs/faq; voyageai.com/tos). Opting out needs a payment method.",
+  "sent_under_this_setting": "Everything sent to Voyage so far (from 2026-10-30 03:12 UTC): every passage with a row in text_embeddings, the passages of the next pending batch (sent in requests rejected with HTTP 429 and in a 16-passage probe whose vectors were discarded) and the probe string \"test\". All public Wikipedia text (CC BY-SA); no visitor questions. Nothing has been sent with the opt-out active.",
+  "rate_limits": "no payment method: 3 requests and 10K tokens per minute (Voyage 429 message, 2026-10-30)"
+ },
+ "runs": [
+  {
+   "passages": 37375,
+   "embedded": 128,
+   "deleted": 0,
+   "tokens": 6990,
+   "note": "stopped by HTTP 429 after the first batch; resumed by the next run",
+   "date": "2026-10-30 03:12 UTC",
+   "commit": "c7e2d94-dirty",
+   "cost_usd_list_price": 0.0001,
+   "voyage_training_opt_out": false
+  },
+  {
+   "passages": 37375,
+   "embedded": 128,
+   "deleted": 0,
+   "tokens": 8815,
+   "note": "stopped by hand after repeated HTTP 429 (2nd batch); resumed later",
+   "date": "2026-10-30 03:15 UTC",
+   "commit": "c7e2d94-dirty",
+   "cost_usd_list_price": 0.0002,
+   "voyage_training_opt_out": false
+  },
+  {
+   "passages": 37375,
+   "embedded": 0,
+   "deleted": 0,
+   "tokens": 913,
+   "note": "rate-limit probe: 16 passages embedded and discarded (plus a 0-token call); no rows written",
+   "date": "2026-10-30",
+   "commit": "c7e2d94-dirty",
+   "voyage_training_opt_out": false,
+   "cost_usd_list_price": 1.8e-05
+  },
+  {
+   "passages": 37375,
+   "embedded": 25392,
+   "deleted": 0,
+   "tokens": 1965768,
+   "batch": 48,
+   "pace_s": 21,
+   "note": "stopped by a read timeout on the next batch (its tokens, if Voyage counted them, are not known); tokens are the sum Voyage reported for the 529 committed batches",
+   "date": "2026-10-30 07:03 UTC",
+   "commit": "a9fe314-dirty",
+   "voyage_training_opt_out": false,
+   "cost_usd_list_price": 0.0393
+  },
+  {
+   "passages": 37375,
+   "embedded": 1248,
+   "deleted": 0,
+   "tokens": 97061,
+   "batch": 48,
+   "pace_s": 21,
+   "note": "stopped after 10 HTTP 429s on a batch over the 10K tokens/minute limit; tokens are the sum Voyage reported for the 26 committed batches",
+   "date": "2026-10-30 07:16 UTC",
+   "commit": "a9fe314-dirty",
+   "voyage_training_opt_out": false,
+   "cost_usd_list_price": 0.0019
+  },
+  {
+   "passages": 37375,
+   "embedded": 10479,
+   "deleted": 0,
+   "tokens": 972903,
+   "date": "2026-10-30 09:21 UTC",
+   "commit": "a9fe314-dirty",
+   "voyage_training_opt_out": false,
+   "cost_usd_list_price": 0.0195
+  }
+ ]
+}

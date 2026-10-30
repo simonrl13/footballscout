@@ -163,3 +163,11 @@ def test_neon_migration_matches_the_local_ddl():
     neon = (root / "docs" / "deploy" / "neon_embeddings.sql").read_text(encoding="utf-8")
     block = local[local.index("CREATE TABLE"):]
     assert block in neon and neon.index("SET ROLE scout_loader;") < neon.index(block)
+
+
+def test_batches_respect_count_and_character_budgets():
+    todo = [("d", i, "x" * n, "h") for i, n in enumerate([5, 5, 5, 20, 5])]
+    sizes = lambda b: [len(x) for x in b]  # noqa: E731
+    assert sizes(embed.batches(todo, 2)) == [2, 2, 1]
+    assert sizes(embed.batches(todo, 10, max_chars=12)) == [2, 1, 1, 1]  # the 20-character passage goes alone
+    assert [x for b in embed.batches(todo, 3, max_chars=12) for x in b] == todo
