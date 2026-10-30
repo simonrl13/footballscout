@@ -425,6 +425,12 @@ Pre-registered here and in docs/RESEARCH_LOG.md (2026-10-29) before any retrieva
   two-sided McNemar test on those paired hits@1 gives p < 0.05 (with no losses that takes 6 net wins; with losses more,
   e.g. 8–1, 10–2); (2) its MRR within the player is higher; (3) its p95 latency is at most 500 ms above keyword's;
   (4) the agent eval shows no regression (below). Otherwise keyword stays and the result is written up as negative.
+- **Amendment (2026-10-29, before any Voyage call or retrieval run; reason: string-match gold for only 24 of the 36 and
+  12 of the 24 dev questions, mostly missing for contracts):** transfer questions are added (seed 20261030, players
+  disjoint, kept as drawn) until 50 eval questions have a string-match gold passage, and the dev split is topped up
+  (seed 20261031) to about 24 with gold. Results are reported for the original 36 and the extended set; **the switching
+  rule applies to the extended set.** Contract questions without gold are left out of hits@k/MRR and reported as a
+  coverage finding. Procedure: docs/RESEARCH_LOG.md (amendment, 2026-10-29).
 
 ---
 

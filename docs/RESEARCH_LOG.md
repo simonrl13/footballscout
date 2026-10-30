@@ -798,6 +798,28 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
   run). voyage-4-lite at US$0.02 per million tokens is under US$0.10 and inside the 200M free tokens; queries and
   reranks are a few thousand tokens. Agent runs: about 62 at about US$0.002.
 
+### 2026-10-29 — AMENDMENT to the retrieval pre-registration (before any Voyage call or retrieval run)
+- **Reason:** gold coverage, found before any run by applying the string-match rule alone (no API, no retrieval): only
+  24 of the 36 questions have a string-match gold passage (16 of 18 transfer, 8 of 18 contract), and 12 of the 24 dev
+  questions (11 of 12 transfer, 1 of 12 contract). Wikipedia pages rarely state the June 2026 contract expiry year. With
+  about 24 scored questions the McNemar rule could rarely be met.
+- **Extended evaluation set** (`scout/evals/retrieval_extra.jsonl`, owner's decision): transfer questions only, built
+  with `text_set.py`'s transfer rules from players disjoint from the 36 and the dev split, seed 20261030. Candidates
+  (one question per player, that player's earliest eligible window) are shuffled per value band and taken round-robin
+  high, mid, low. They are added one at a time, and **every added question is kept**; adding stops as soon as 50
+  questions of the original 36 plus the extension have a string-match gold passage (pooling and review happen later and
+  don't change the set). Accepted names: Transfermarkt's name, the existing `ALIASES`, and an automatic short form (the
+  name without club-type words such as FC, CF, SC, AFC, SV; only if a word of 4+ letters remains). No aliases are added
+  by hand.
+- **Dev top-up** (`scout/evals/retrieval_dev.jsonl`): the same procedure, seed 20261031, players disjoint from the 36,
+  the dev split and the extension, until about 24 dev questions have a string-match gold passage (the existing 24 dev
+  questions are kept).
+- **Reporting:** results for the original 36 and for the extended set (36 + extension). **The switching rule applies
+  to the extended set.** Questions with no relevant passage after review are left out of hits@k and MRR; contract
+  questions among them are reported separately as a coverage finding (the share of contract questions whose answer the
+  corpus contains), not as retrieval misses.
+- Everything else in the 2026-10-29 pre-registration is unchanged.
+
 ---
 
 ## Paper notes
