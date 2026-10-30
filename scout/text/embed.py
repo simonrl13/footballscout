@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import time
+import urllib.error
 
 from scout.data.manifest import ROOT, git_commit
 from scout.text import retrieve, store
@@ -47,8 +48,21 @@ def corpus_hash(conn) -> str:
     return h.hexdigest()
 
 
+def with_backoff(embed_fn, texts: list[str], tries: int = 10):
+    """Retries rate limits (HTTP 429) during bulk ingestion only; the live query path fails fast instead."""
+    for attempt in range(tries):
+        try:
+            return embed_fn(texts, "document")
+        except urllib.error.HTTPError as e:
+            if e.code != 429 or attempt == tries - 1:
+                raise
+            wait = float(e.headers.get("Retry-After") or 65)  # Voyage limits are per minute
+            print(f"rate limited (429), waiting {wait:.0f} s", flush=True)
+            time.sleep(wait)
+
+
 def ingest(conn, embed_fn=retrieve.embed, model: str = retrieve.EMBED_MODEL, version: str = "", max_usd: float = 0.20,
-           limit: int | None = None) -> dict:
+           limit: int | None = None, batch_size: int = BATCH, pace: float = 0) -> dict:
     """Embeds what `pending` returns (the first `limit` if given), deletes orphaned rows; returns counts and tokens."""
     conn.execute((ROOT / "db" / "embeddings.sql").read_text())  # static DDL, idempotent
     gone = conn.execute("""DELETE FROM text_embeddings e WHERE e.model = %s AND NOT EXISTS
@@ -58,11 +72,13 @@ def ingest(conn, embed_fn=retrieve.embed, model: str = retrieve.EMBED_MODEL, ver
     todo, total = pending(conn, model)
     todo = todo[:limit] if limit is not None else todo
     tokens = 0
-    for i in range(0, len(todo), BATCH):
+    for i in range(0, len(todo), batch_size):
         if tokens * PRICE_PER_MTOK / 1e6 >= max_usd:
             raise SystemExit(f"stopping: {tokens:,} tokens reached --max-usd {max_usd} (rerun resumes)")
-        batch = todo[i:i + BATCH]
-        vectors, used = embed_fn([t for _, _, t, _ in batch], "document")
+        if i and pace:
+            time.sleep(pace)  # stays under per-minute limits (no payment method: 3 requests, 10K tokens per minute)
+        batch = todo[i:i + batch_size]
+        vectors, used = with_backoff(embed_fn, [t for _, _, t, _ in batch])
         tokens += used
         with conn.cursor() as cur:
             cur.executemany("""
@@ -73,12 +89,13 @@ def ingest(conn, embed_fn=retrieve.embed, model: str = retrieve.EMBED_MODEL, ver
                     embedding = EXCLUDED.embedding, created_at = now()""",
                 [(d, c, model, version, retrieve.EMBED_DIM, t, h, str(v)) for (d, c, t, h), v in zip(batch, vectors)])
         conn.commit()
-        print(f"{min(i + BATCH, len(todo)):,}/{len(todo):,} embedded, {tokens:,} tokens", flush=True)
+        print(f"{min(i + batch_size, len(todo)):,}/{len(todo):,} embedded, {tokens:,} tokens", flush=True)
     return {"passages": total, "embedded": len(todo), "deleted": gone, "tokens": tokens}
 
 
 def write_manifest(conn, run: dict) -> None:
     old = json.loads(MANIFEST.read_text(encoding="utf-8")) if MANIFEST.exists() else {"runs": []}
+    account = old.get("voyage_account", {})  # set by the owner in the manifest; every run records it
     rows = conn.execute("SELECT count(*) FROM text_embeddings WHERE model = %s", (retrieve.EMBED_MODEL,)).fetchone()[0]
     doc = {
         "what": "Voyage embeddings of the text_passages rows (derived data; table text_embeddings)",
@@ -87,8 +104,9 @@ def write_manifest(conn, run: dict) -> None:
                      "embedded_text": "section name, newline, passage body (scout.text.retrieve.chunk_text)"},
         "model": retrieve.EMBED_MODEL, "dimension": retrieve.EMBED_DIM, "storage": "halfvec(1024)",
         "input_type": "document (queries: query)", "price_usd_per_mtok": PRICE_PER_MTOK,
-        "corpus_sha256": corpus_hash(conn), "rows": rows,
+        "corpus_sha256": corpus_hash(conn), "rows": rows, "voyage_account": account,
         "runs": old["runs"] + [{**run, "date": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()), "commit": git_commit(),
+                                "voyage_training_opt_out": account.get("training_opt_out"),
                                 "cost_usd_list_price": round(run["tokens"] * PRICE_PER_MTOK / 1e6, 4)}],
     }
     MANIFEST.write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8", newline="\n")
@@ -98,6 +116,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--count", action="store_true", help="what would be embedded (characters), no API call")
     ap.add_argument("--max-usd", type=float, default=0.20)
+    ap.add_argument("--batch", type=int, default=BATCH, help="passages per request")
+    ap.add_argument("--pace", type=float, default=0, help="seconds between requests")
     args = ap.parse_args()
     with store.connect() as conn:
         if args.count:
@@ -107,7 +127,8 @@ def main() -> None:
             chars = sum(len(t) for _, _, t, _ in todo)
             print(f"{len(todo):,} of {total:,} passages to embed, {chars:,} characters")
             return
-        run = ingest(conn, version=f"API, embedded {time.strftime('%Y-%m-%d', time.gmtime())}", max_usd=args.max_usd)
+        run = ingest(conn, version=f"API, embedded {time.strftime('%Y-%m-%d', time.gmtime())}", max_usd=args.max_usd,
+                     batch_size=args.batch, pace=args.pace)
         write_manifest(conn, run)
     print(f"done: {run}; cost at list price US${run['tokens'] * PRICE_PER_MTOK / 1e6:.4f}")
 

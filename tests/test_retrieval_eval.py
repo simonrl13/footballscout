@@ -63,3 +63,24 @@ def test_mcnemar_needs_six_net_wins_without_losses():
     assert re_.mcnemar_p(5, 0) > 0.05 and re_.mcnemar_p(6, 0) < 0.05
     assert re_.mcnemar_p(7, 1) > 0.05 and re_.mcnemar_p(8, 1) < 0.05
     assert re_.mcnemar_p(9, 2) > 0.05 and re_.mcnemar_p(10, 2) < 0.05
+
+
+def test_throttle_retries_429_and_reuses_query_embeddings(monkeypatch):
+    import urllib.error
+
+    from scout.text import retrieve
+    calls = []
+
+    def fake(path, payload):
+        calls.append(path)
+        if len(calls) == 1:
+            raise urllib.error.HTTPError("u", 429, "Too Many Requests", {}, None)
+        return {"data": [{"index": 0, "embedding": [0.0]}], "usage": {"total_tokens": 5}}
+    monkeypatch.setattr(retrieve, "voyage", fake)
+    monkeypatch.setattr(re_.time, "sleep", lambda s: None)
+    re_.throttle(pace=0, cache_queries=True)
+    p = {"input": ["q"], "model": "m"}
+    assert retrieve.voyage("embeddings", p)["usage"]["total_tokens"] == 5  # retried after the 429
+    assert retrieve.voyage("embeddings", p)["usage"]["total_tokens"] == 0  # cached: no call, no tokens
+    retrieve.voyage("rerank", {"query": "q"})
+    assert calls == ["embeddings", "embeddings", "rerank"]

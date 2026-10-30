@@ -21,6 +21,7 @@ import random
 import re
 import statistics
 import time
+import urllib.error
 
 from scout.agent import tools
 from scout.data.manifest import MANIFEST, ROOT, git_commit
@@ -69,13 +70,46 @@ def passages(conn, where: str, params: tuple) -> list[dict]:
                         + " ORDER BY doc_id, passage_no", params).fetchall()  # `where` is a constant in this module
 
 
+WAITED = [0.0]  # seconds the throttle slept; subtracted from latency
+
+
+def throttle(pace: float = 21, cache_queries: bool = False) -> None:
+    """Wraps retrieve.voyage for eval runs under Voyage's no-payment-method limits (3 requests, 10K tokens per
+    minute): spaces calls, retries HTTP 429, and optionally reuses a query's embedding within the process (tune and
+    propose only: ranks, not latency). The live path is unchanged."""
+    real, last, cache = retrieve.voyage, [0.0], {}
+
+    def call(path, payload):
+        k = json.dumps(payload, sort_keys=True)
+        if cache_queries and path == "embeddings" and k in cache:
+            return {**cache[k], "usage": {"total_tokens": 0}}
+        for attempt in range(10):
+            wait = last[0] + pace - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)
+                WAITED[0] += wait
+            last[0] = time.monotonic()
+            try:
+                out = real(path, payload)
+                break
+            except urllib.error.HTTPError as e:
+                if e.code != 429 or attempt == 9:
+                    raise
+                time.sleep(65)
+                WAITED[0] += 65
+        if path == "embeddings":
+            cache[k] = out
+        return out
+    retrieve.voyage = call
+
+
 def run_mode(conn, case: dict, mode: str, scope: str, k: int, n: int) -> tuple[list[tuple], float, dict]:
-    """Top DEPTH passage keys, seconds (including Voyage calls), and the Voyage tokens used."""
-    before = dict(retrieve.USAGE)
+    """Top DEPTH passage keys, seconds (including Voyage calls, excluding throttle waits), and the Voyage tokens used."""
+    before, waited = dict(retrieve.USAGE), WAITED[0]
     t = time.perf_counter()
     rows = retrieve.search(conn, case["question"], words(case["question"]),
                            case["player_id"] if scope == "player" else None, DEPTH, mode, k, n)
-    secs = time.perf_counter() - t
+    secs = time.perf_counter() - t - (WAITED[0] - waited)
     conn.rollback()  # end the read-only transaction (and its SET LOCALs) after each query
     return [retrieve.key(r) for r in rows], secs, {u: retrieve.USAGE[u] - before[u] for u in before}
 
@@ -374,7 +408,10 @@ def main() -> None:
     step.add_argument("--propose", action="store_true")
     step.add_argument("--freeze", action="store_true")
     ap.add_argument("--labels-approved", action="store_true", help="only once the owner has approved the gold labels")
+    ap.add_argument("--pace", type=float, default=21, help="seconds between Voyage calls (0 with standard limits)")
     a = ap.parse_args()
+    if not a.freeze:
+        throttle(a.pace, cache_queries=a.tune or a.propose)
     tune() if a.tune else propose() if a.propose else freeze() if a.freeze else evaluate(a.labels_approved)
 
 
