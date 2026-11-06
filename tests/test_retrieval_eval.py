@@ -84,3 +84,31 @@ def test_throttle_retries_429_and_reuses_query_embeddings(monkeypatch):
     assert retrieve.voyage("embeddings", p)["usage"]["total_tokens"] == 0  # cached: no call, no tokens
     retrieve.voyage("rerank", {"query": "q"})
     assert calls == ["embeddings", "embeddings", "rerank"]
+
+
+def test_throttle_retries_network_errors_and_does_not_count_them_as_latency(monkeypatch):
+    from scout.text import retrieve
+    outcomes = [TimeoutError(), {"data": [], "usage": {"total_tokens": 1}}]
+
+    def fake(path, payload):
+        out = outcomes.pop(0)
+        if isinstance(out, Exception):
+            raise out
+        return out
+    monkeypatch.setattr(retrieve, "voyage", fake)
+    monkeypatch.setattr(re_.time, "sleep", lambda s: None)
+    waited = re_.WAITED[0]
+    re_.throttle(pace=0)
+    assert retrieve.voyage("rerank", {"query": "q"})["usage"]["total_tokens"] == 1
+    assert re_.WAITED[0] - waited >= 65
+
+
+def test_coverage_categories_come_from_the_owner_notes():
+    contract, transfer = {"type": "contract"}, {"type": "transfer"}
+    assert re_.coverage_category(transfer, "(no answer, chunking) the date is in the previous passage") == "chunking split"
+    assert re_.coverage_category(contract, "(no answer, outdated) the later extension isn't on the page") == "outdated"
+    assert re_.coverage_category(contract, "(conflict) Wikipedia says otherwise") == "conflict"
+    assert re_.coverage_category(contract, "(no answer) short page, no contract information.") == "short page"
+    assert re_.coverage_category(contract, "(no answer) only an old contract") == "contract no answer"
+    assert re_.coverage_category(transfer, "(no answer) never says when") == "transfer no answer"
+    assert re_.coverage_category(transfer, None) == "no owner note"

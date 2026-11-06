@@ -34,12 +34,15 @@ EVALS = ROOT / "scout" / "evals"
 QUESTIONS, EXTRA, DEV = EVALS / "text.jsonl", EVALS / "retrieval_extra.jsonl", EVALS / "retrieval_dev.jsonl"
 CANDIDATES, GOLD, TUNED = EVALS / "retrieval_candidates.json", EVALS / "retrieval_gold.jsonl", EVALS / "retrieval_tuned.json"
 REVIEW, REPORT = ROOT / "docs" / "evals" / "retrieval_review.md", ROOT / "reports" / "retrieval.md"
+RAW, USAGE_LOG = ROOT / "reports" / "retrieval_rows.json", EVALS / "retrieval_usage.jsonl"
 DEPTH, KS, SEED = 10, (1, 3, 5, 10), 20261029
 K_GRID, N_GRID = (10, 30, 60), (10, 20, 30)
 SCOPES = ("player", "corpus")
 PRICE = {"embed_tokens": 0.02, "rerank_tokens": 0.02}  # US$ per million tokens (docs.voyageai.com/docs/pricing)
 CONTRACT_WORDS = re.compile(r"\b(?:contract|extension|extended|signed|until|deal)\b", re.I)
 PROVISIONAL = "**Provisional, pending label review**: the owner has not yet approved the gold labels."
+LABELS = "Labels were reviewed by the owner with assistance from Claude, blind to retrieval mode."
+NOT_RECORDED = "not recorded"
 
 
 def load(path) -> list[dict]:
@@ -70,13 +73,14 @@ def passages(conn, where: str, params: tuple) -> list[dict]:
                         + " ORDER BY doc_id, passage_no", params).fetchall()  # `where` is a constant in this module
 
 
-WAITED = [0.0]  # seconds the throttle slept; subtracted from latency
+WAITED = [0.0]  # seconds the throttle slept or lost to failed attempts; subtracted from latency
+CALLS = [0]  # Voyage requests that returned
 
 
 def throttle(pace: float = 21, cache_queries: bool = False) -> None:
     """Wraps retrieve.voyage for eval runs under Voyage's no-payment-method limits (3 requests, 10K tokens per
-    minute): spaces calls, retries HTTP 429, and optionally reuses a query's embedding within the process (tune and
-    propose only: ranks, not latency). The live path is unchanged."""
+    minute): spaces calls, retries HTTP 429, 5xx and network errors, and optionally reuses a query's embedding within
+    the process (tune and propose only: ranks, not latency). The live path is unchanged."""
     real, last, cache = retrieve.voyage, [0.0], {}
 
     def call(path, payload):
@@ -91,10 +95,13 @@ def throttle(pace: float = 21, cache_queries: bool = False) -> None:
             last[0] = time.monotonic()
             try:
                 out = real(path, payload)
+                CALLS[0] += 1
                 break
-            except urllib.error.HTTPError as e:
-                if e.code != 429 or attempt == 9:
+            except (urllib.error.URLError, TimeoutError) as e:  # HTTPError is a URLError
+                retryable = not isinstance(e, urllib.error.HTTPError) or e.code == 429 or e.code >= 500
+                if not retryable or attempt == 9:
                     raise
+                WAITED[0] += time.monotonic() - last[0]  # the failed attempt
                 time.sleep(65)
                 WAITED[0] += 65
         if path == "embeddings":
@@ -270,6 +277,97 @@ def paired(rows: list[dict], gold: dict, mode: str, scope: str) -> dict:
             "mrr_diff": sum(diffs) / len(diffs), "perm_p": perm_p(diffs)}
 
 
+def usage_cost(usage: dict) -> float:
+    return sum(usage[u] * PRICE[u] for u in PRICE) / 1e6
+
+
+def log_usage(step: str) -> None:
+    """Appends this process's Voyage usage, as Voyage reported it, to the usage log (also when a step fails)."""
+    row = {"step": step, "date": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()), "commit": git_commit(),
+           "calls": CALLS[0], **retrieve.USAGE, "cost_usd_list_price": round(usage_cost(retrieve.USAGE), 6)}
+    with USAGE_LOG.open("a", encoding="utf-8", newline="\n") as f:
+        f.write(json.dumps(row) + "\n")
+    print("Voyage usage:", json.dumps(row), flush=True)
+
+
+def cost_table() -> list[str]:
+    """Every Voyage step of the milestone. --propose ran before usage logging existed."""
+    runs = json.loads(EMB_MANIFEST.read_text(encoding="utf-8"))["runs"]
+    tune_ = json.loads(TUNED.read_text(encoding="utf-8"))["voyage_tokens"]
+    steps = [("Embedding the corpus (`scout.text.embed`)", {"embed_tokens": sum(r["tokens"] for r in runs), "rerank_tokens": 0}),
+             ("`--tune`", tune_), ("Evaluation (this run)", dict(retrieve.USAGE))]
+    row = lambda name, u: f"| {name} | {u['embed_tokens']:,} | {u['rerank_tokens']:,} | {usage_cost(u):.4f} |"  # noqa: E731
+    total = {u: sum(x[u] for _, x in steps) for u in PRICE}
+    return ["| Step | Embedding tokens | Rerank tokens | US$ at list price |", "|---|---|---|---|",
+            row(*steps[0]), row(*steps[1]), f"| `--propose` | {NOT_RECORDED} | {NOT_RECORDED} | {NOT_RECORDED} |",
+            row(*steps[2]), row("Total recorded (without `--propose`)", total), "",
+            "Tokens are Voyage's `usage.total_tokens`. One embedding request timed out during ingestion and is not counted, "
+            "because its reply never arrived. List prices: voyage-4-lite and rerank-2.5-lite, US$0.02 per million tokens; "
+            "whether the account's free tokens cover these models was not confirmed, so the amount billed may be lower.", ""]
+
+
+NOTE = re.compile(r"^> Note: (.*)$")
+CATEGORIES = ("contract no answer", "outdated", "conflict", "chunking split", "short page", "transfer no answer",
+              "no owner note")
+
+
+def owner_notes() -> dict[str, str]:
+    """The owner's note under each question of the reviewed file."""
+    notes, current = {}, None
+    for line in REVIEW.read_text(encoding="utf-8").splitlines():
+        if line.startswith("## "):
+            current = line[3:].strip()
+        elif m := NOTE.match(line):
+            notes[current] = m.group(1)
+    return notes
+
+
+def coverage_category(case: dict, note: str | None) -> str:
+    low = (note or "").lower()
+    if not note:
+        return "no owner note"
+    for word, category in (("chunking", "chunking split"), ("conflict", "conflict"), ("outdated", "outdated"),
+                           ("short page", "short page")):
+        if word in low:
+            return category
+    return "contract no answer" if case["type"] == "contract" else "transfer no answer"
+
+
+def coverage(cases: list[dict], gold: dict) -> list[str]:
+    notes = owner_notes()
+    missing = [c for c in cases if not gold[c["id"]]["player"]]
+    groups = {cat: [c for c in missing if coverage_category(c, notes.get(c["id"])) == cat] for cat in CATEGORIES}
+    lines = ["## Coverage finding: questions without gold (not retrieval misses)", "",
+             f"{len(missing)} of {len(cases)} questions have no passage that answers them under the review rules, so "
+             "they are left out of hits@k and MRR: no mode can score on them.", "",
+             "| Category | Questions | IDs |", "|---|---|---|"]
+    lines += [f"| {cat} | {len(cs)} | {', '.join(c['id'] for c in cs)} |" for cat, cs in groups.items() if cs]
+    lines += ["", "**Chunking splits:** the answer is on the page but divided across two passages, so no single passage "
+              "answers the question alone (review rule 1):", ""]
+    lines += [f"- {c['question']} (`{c['id']}`): {notes[c['id']]}" for c in groups["chunking split"]]
+    lines += ["", "| Question | Category | Owner's note |", "|---|---|---|"]
+    lines += [f"| {c['id']} | {cat} | {notes.get(c['id'], '–')} |" for cat, cs in groups.items() for c in cs]
+    return lines + [""]
+
+
+def misses(cases: list[dict], rows: list[dict], gold: dict, sizes: dict) -> list[str]:
+    """Scored questions, within the player, where some mode doesn't put a relevant passage first."""
+    by = {(r["id"], r["mode"]): r for r in rows if r["scope"] == "player"}
+    lines = ["## Misses within the player (rank of the first relevant passage; – not in the top 10)", "",
+             "Scored questions where at least one mode doesn't rank a relevant passage first.", "",
+             "| Question | Set | Page passages | Relevant | " + " | ".join(retrieve.MODES) + " |",
+             "|---|---|---|---|" + "---|" * len(retrieve.MODES)]
+    for c in cases:
+        ranks = [by[c["id"], m]["rank"] for m in retrieve.MODES]
+        if gold[c["id"]]["player"] and any(x != 1 for x in ranks):
+            lines.append(f"| {c['id']} | {'extension' if c.get('extension') else 'original'} | {sizes[c['id']]['player']} | "
+                         f"{len(gold[c['id']]['player'])} | " + " | ".join(str(x or "–") for x in ranks) + " |")
+    scored = [c for c in cases if gold[c["id"]]["player"]]
+    lines += ["", "Not in the top 10, of " + str(len(scored)) + " scored: " + ", ".join(
+        f"{m} {sum(by[c['id'], m]['rank'] is None for c in scored)}" for m in retrieve.MODES) + ".", ""]
+    return lines
+
+
 def eval_cases() -> list[dict]:
     """The original 36 and the extension (amendment 2026-10-29), in that order."""
     return load(QUESTIONS) + [{**c, "extension": True} for c in load(EXTRA)]
@@ -296,6 +394,7 @@ def evaluate(labels_approved: bool) -> None:
                     rows.append({"id": c["id"], "mode": mode, "scope": scope, "secs": secs, "usage": usage,
                                  "rank": next((i for i, x in enumerate(ranked, 1) if x in rel), None),
                                  "rr": rr(ranked, rel), **{f"hits@{q}": hits(ranked, rel, q) for q in KS}})
+                RAW.write_text(json.dumps(rows) + "\n", encoding="utf-8", newline="\n")  # kept if a later step fails
                 print(mode, scope, "done", flush=True)
     results = {}
     for name, keep in SETS.items():
@@ -314,6 +413,12 @@ def decision(summary: dict, tests: dict, mode: str) -> list[str]:
             f"(2) MRR within the player {s['mrr']:.3f} vs keyword {kw['mrr']:.3f}: " + ("met" if s["mrr"] > kw["mrr"] else "not met"),
             f"(3) p95 latency {s['p95_ms']:.0f} ms vs keyword {kw['p95_ms']:.0f} ms (limit +500): "
             + ("met" if s["p95_ms"] <= kw["p95_ms"] + 500 else "not met")]
+
+
+def verdict(summary: dict, tests: dict, mode: str) -> str:
+    parts = decision(summary, tests, mode)
+    met = all(x.endswith(": met") for x in parts)
+    return ("parts 1–3 **met** (part 4, the agent eval, not yet run)" if met else "**not met**") + ". " + "; ".join(parts)
 
 
 def tables(summary: dict, tests: dict, scope: str) -> list[str]:
@@ -340,7 +445,7 @@ def write_report(cases, rows, gold, sizes, per_player, results, k, n, labels_app
     lines = ["# Retrieval: keyword vs vector vs hybrid", ""]
     if not labels_approved:
         lines += [PROVISIONAL, ""]
-    lines += [f"Commit `{git_commit()}`, {time.strftime('%Y-%m-%d')}. Pre-registration: docs/RESEARCH_LOG.md (2026-10-29, "
+    lines += [LABELS, "", f"Commit `{git_commit()}`, {time.strftime('%Y-%m-%d')}. Pre-registration: docs/RESEARCH_LOG.md (2026-10-29, "
               f"and its amendment). Questions: the original 36 (`scout/evals/text.jsonl`) and the extended set (+{n_ext} "
               f"transfer questions, `scout/evals/retrieval_extra.jsonl`; {len(cases)} in all). Query = the question "
               f"verbatim; top {DEPTH}. Gold: `scout/evals/retrieval_gold.jsonl` (sha256 `{sha256(GOLD)[:12]}`). "
@@ -359,14 +464,8 @@ def write_report(cases, rows, gold, sizes, per_player, results, k, n, labels_app
             lines += [f"### {sub}", "", *tables(summary, tests, scope)]
     summary, tests = results["extended"]
     lines += ["## Switching rule (pre-registered, extended set), parts 1–3", ""]
-    lines += [f"- **{mode}:** " + "; ".join(decision(summary, tests, mode)) for mode in retrieve.MODES[1:]]
-    contracts = [c for c in cases if c["type"] == "contract"]
-    missing = [c["id"] for c in contracts if not gold[c["id"]]["player"]]
-    other = [c["id"] for c in cases if c["type"] != "contract" and not gold[c["id"]]["player"]]
-    lines += ["", "## Coverage finding (not retrieval misses)", "",
-              f"Contract questions whose answer (the June 2026 expiry year) no passage on the player's page states: "
-              f"**{len(missing)} of {len(contracts)}** ({', '.join(missing) or 'none'}). They are left out of hits@k and MRR. "
-              f"Transfer questions with no relevant passage on the page: {len(other)} ({', '.join(other) or 'none'}).", "",
+    lines += [f"- **{mode}:** {verdict(summary, tests, mode)}" for mode in retrieve.MODES[1:]]
+    lines += ["", *coverage(cases, gold), *misses(cases, rows, gold, sizes), "## Voyage usage and cost", "", *cost_table(),
               "## Per question: rank of the first relevant passage in the top 10 (– none)", "",
               "| Question | Set | Page passages | Relevant (page / corpus) | "
               + " | ".join(f"{m} ({s})" for s in SCOPES for m in retrieve.MODES) + " |",
@@ -390,7 +489,7 @@ def log_mlflow(results, k, n, labels_approved) -> None:
             "labels": "approved" if labels_approved else "provisional, pending label review"}
     with start_run("retrieval eval (M8)", tags=tags):
         mlflow.log_params({"rrf_k": k, "rerank_n": n, "depth": DEPTH, "embed_model": retrieve.EMBED_MODEL,
-                           "rerank_model": retrieve.RERANK_MODEL,
+                           "rerank_model": retrieve.RERANK_MODEL, "voyage_calls": CALLS[0], **retrieve.USAGE,
                            "questions": "scout/evals/text.jsonl + scout/evals/retrieval_extra.jsonl"})
         for name, (summary, tests) in results.items():
             for (mode, scope), m in summary.items():
@@ -412,7 +511,12 @@ def main() -> None:
     a = ap.parse_args()
     if not a.freeze:
         throttle(a.pace, cache_queries=a.tune or a.propose)
-    tune() if a.tune else propose() if a.propose else freeze() if a.freeze else evaluate(a.labels_approved)
+    if a.freeze:
+        return freeze()
+    try:
+        tune() if a.tune else propose() if a.propose else evaluate(a.labels_approved)
+    finally:
+        log_usage("tune" if a.tune else "propose" if a.propose else "evaluate")
 
 
 if __name__ == "__main__":
