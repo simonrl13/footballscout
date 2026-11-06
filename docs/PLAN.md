@@ -431,6 +431,9 @@ Pre-registered here and in docs/RESEARCH_LOG.md (2026-10-29) before any retrieva
   (seed 20261031) to about 24 with gold. Results are reported for the original 36 and the extended set; **the switching
   rule applies to the extended set.** Contract questions without gold are left out of hits@k/MRR and reported as a
   coverage finding. Procedure: docs/RESEARCH_LOG.md (amendment, 2026-10-29).
+- **Gold frozen (2026-11-06), before the evaluation run:** `scout/evals/retrieval_gold.jsonl`, sha256
+  `18c5a86de3b376a1782cc094592f7eb9e6d83724b72088ecef9c324e1c6011a0`: 741 labels, 65 relevant, 56 of the 70 questions
+  with gold, 14 without. Labels were reviewed by the owner with assistance from Claude, blind to retrieval mode.
 
 ---
 

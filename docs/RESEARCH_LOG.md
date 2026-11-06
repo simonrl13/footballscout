@@ -822,6 +822,23 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 
 ---
 
+## 2026-11-06 — Retrieval gold frozen (before the evaluation run)
+
+- **File:** `scout/evals/retrieval_gold.jsonl`, sha256 `18c5a86de3b376a1782cc094592f7eb9e6d83724b72088ecef9c324e1c6011a0`.
+  741 labels (one per candidate), 65 relevant, 56 of the 70 questions with gold, 14 without. Each row records its origin:
+  of the 65 relevant passages, 57 were proposed by both string match and the pool, 8 by the pool only, none by string
+  match only.
+- **Review:** labels were reviewed by the owner with assistance from Claude, blind to retrieval mode. The rules (1-10)
+  and the notes on questions without gold are in `docs/evals/retrieval_review.md`, sha256
+  `28a2f1bdcfe5a7eba32d77a2195b7cefa4a303a8bd14c1d159fa9fd8bd7c7da0`; the candidates' origins are in
+  `scout/evals/retrieval_candidates.json`.
+- **Checks before freezing:** 741 of 741 candidate lines parse, each under its own question; every line's text equals
+  the passage its ID maps to; no relevant passage is on another player's page, so corpus-wide gold equals within-player
+  gold.
+- **Status:** results stay "provisional, pending label review" until the owner approves the labels.
+
+---
+
 ## Paper notes
 
 ### Candidate contributions
