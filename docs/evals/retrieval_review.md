@@ -302,6 +302,7 @@ Candidates: 741 for 70 questions.
 - [ ] **tr-435796-2021#4** (another player's page): Career | On 29 July 2025, Fischer transferred to the French Ligue 1 club Metz on a contract until 2029.
 - [ ] **tr-435796-2021#5**: Career | Career. Fischer joined Türkgücü München in July 2019 before extending his contract with the club the following summer.
 - [ ] **tr-435796-2021#6**: External links | Career statistics. References. External links. at the VfL Wolfsburg website
+> Note: (no answer) the page covers Türkgücü München (2019) and Wolfsburg (2022); the 2021 move to Nürnberg isn't mentioned.
 
 ## tr-342385-2016
 
