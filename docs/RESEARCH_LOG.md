@@ -836,6 +836,7 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
   the passage its ID maps to; no relevant passage is on another player's page, so corpus-wide gold equals within-player
   gold.
 - **Status:** results stay "provisional, pending label review" until the owner approves the labels.
+- Dry run with fake vectors on 2026-11-06 to test the pipeline; keyword mode ran on the frozen gold but its output was deleted unread. Not an evaluation.
 
 ---
 
