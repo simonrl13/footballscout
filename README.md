@@ -167,6 +167,46 @@ An exploratory check, run after the result and not used for any decision: scored
   |---|---|---|---|---|---|---|---|---|---|
   | 13.7% | 18.6% | 22.6% | 25.3% | 28.4% | 30.4% | 31.2% | 31.7% | 33.5% | 35.3% |
 
+## Retrieval: keyword vs hybrid (M8, provisional)
+
+**Provisional, pending label review.** Labels were reviewed by the owner with assistance from Claude, blind to retrieval
+mode. `search_text` can rank passages with `RETRIEVAL_MODE` = keyword (the default, and the live demo's mode), vector,
+hybrid (reciprocal rank fusion, k = 10) or hybrid_rerank (top 10 fused, reranked; N = 10). k and N were chosen on a separate
+dev split. Embeddings: Voyage `voyage-4-lite`, 1024 dimensions; rerank: `rerank-2.5-lite`. Vectors are local only.
+
+Extended set, 70 questions, 56 scored (questions with a relevant passage):
+
+| Mode | MRR, player | hits@1 | hits@3 | hits@5 | hits@10 | MRR, corpus | hits@5, corpus | p50 / p95 ms, player | US$ per query, player |
+|---|---|---|---|---|---|---|---|---|---|
+| keyword | 0.692 | 0.52 | 0.84 | 0.93 | 0.98 | 0.061 | 0.05 | 3 / 4 | 0 |
+| vector | 0.871 | 0.79 | 0.95 | 0.96 | 1.00 | 0.776 | 0.84 | 543 / 1115 | 0.0000004 |
+| hybrid | 0.799 | 0.64 | 0.96 | 0.96 | 1.00 | 0.467 | 0.80 | 556 / 1088 | 0.0000004 |
+| hybrid_rerank | 0.943 | 0.91 | 0.98 | 0.98 | 1.00 | 0.830 | 0.84 | 1050 / 1571 | 0.0000183 |
+| random | 0.244 | 0.09 | 0.27 | 0.43 | 0.75 | 0.000 | 0.00 | – | – |
+
+Original 36 questions, 26 scored, within the player (MRR / hits@1): keyword 0.754 / 0.62, vector 0.923 / 0.85, hybrid
+0.859 / 0.73, hybrid_rerank 1.000 / 1.00, random 0.226 / 0.08.
+
+Latency: time lost to rate-limit waits and retries is excluded, and the run used Voyage's free-tier limits. It was measured
+from a local machine against local Postgres, Voyage calls included.
+
+**The pre-registered switching rule is not met, so keyword stays the default.** All three modes beat keyword on hits@1
+within the player (vector 19 wins, 4 losses, McNemar p = 0.003; hybrid 7-0, p = 0.016; hybrid_rerank 22-0, p < 0.001) and on
+MRR, but each misses the p95 latency limit of keyword + 500 ms. The agent eval (the rule's last part) was not run.
+
+14 of the 70 questions have no gold passage and aren't scored; the breakdown, including two questions whose answer is split
+across passages, is in [reports/retrieval.md](reports/retrieval.md). In the vector and hybrid modes, questions are sent to
+Voyage ([SECURITY.md](SECURITY.md)). Neon would need 219 MB at 1024 dimensions or 111.5 MB at 512 (measured locally); nothing
+has been migrated. No new package is used (`urllib`), so the image doesn't grow.
+
+```sh
+uv run --env-file .env python -m scout.text.embed --max-usd 0.10 --batch 128 --max-chars 16000 --pace 30   # embeddings (idempotent)
+uv run --env-file .env python -m scout.evals.retrieval_eval --tune --pace 25      # k and N on the dev split
+uv run --env-file .env python -m scout.evals.retrieval_eval --propose --pace 25   # blind review file
+uv run --env-file .env python -m scout.evals.retrieval_eval --freeze              # gold from the review marks
+uv run --env-file .env python -m scout.evals.retrieval_eval --pace 25             # evaluation, report, MLflow
+```
+
 ## Test-set discipline
 The test set is evaluated at most once per milestone, only by `scout/ml/evaluate_test.py`, and every run is logged with date, commit and reason. **Disclosure:** in the earlier v0 design (Phase 2), the v0 test metrics were printed on every training run and viewed 4 times. No feature, hyperparameter or model decision was based on them; the only change made after viewing was switching the age-only baseline from median to mean, because of a metric artifact visible in validation too. v0 was then replaced by the SPEC design, with new splits.
 

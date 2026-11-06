@@ -219,8 +219,7 @@ the live demo's mode is **keyword**, which never calls Voyage. Nothing below exi
   [privacy policy](https://www.voyageai.com/privacy); read 2026-10-29). **Everything sent so far was sent with the
   opt-out inactive:** all passages embedded from 2026-10-30 03:12 UTC on (every row in `text_embeddings`), the next
   pending batch (sent in requests rejected with HTTP 429 and in a 16-passage probe whose vectors were discarded), and
-  the probe string "test". The eval questions (tuning, pooling, evaluation) will go under the same setting unless it
-  changes first. All of it is public text or derived from public data; no visitor question has been sent. Nothing has been sent with the opt-out active; if it is turned on later, the
+  the probe string "test", and the eval and dev questions (tuning, pooling, evaluation, under the same setting). All of it is public text or derived from public data; no visitor question has been sent. Nothing has been sent with the opt-out active; if it is turned on later, the
   manifest records the setting per run, so the before/after split stays visible.
 - **Condition before any non-keyword mode goes live (owner's decision):** with the opt-out inactive, visitor questions
   would be stored by Voyage and could be used for training. Turning the opt-out on (and recording it here) is

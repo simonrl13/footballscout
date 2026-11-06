@@ -836,7 +836,37 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
   the passage its ID maps to; no relevant passage is on another player's page, so corpus-wide gold equals within-player
   gold.
 - **Status:** results stay "provisional, pending label review" until the owner approves the labels.
-- Dry run with fake vectors on 2026-11-06 to test the pipeline; keyword mode ran on the frozen gold but its output was deleted unread. Not an evaluation.
+- Dry run with fake vectors on 2026-11-06 to test the pipeline; keyword mode ran on the frozen gold but its output was deleted unread. Not an evaluation. Section headings and the coverage section, which contain no retrieval output, were viewed.
+
+---
+
+## 2026-11-06 — Keyword vs vector vs hybrid retrieval: provisional result (switching rule not met)
+
+- **Status: provisional, pending label review.** Labels were reviewed by the owner with assistance from Claude, blind to
+  retrieval mode. Full tables: `reports/retrieval.md`. MLflow run `0754435dfac74809bac8bd518e9df330`.
+- **Provenance:** code: 5eb5a54 (the run started from this commit); the logged 28ee826-dirty reflects two later docs-only commits (cfbc63f, 28ee826) and the run's own output files.
+- **Result, extended set, within the player (n = 56 of 70 questions):** MRR / hits@1: keyword 0.692 / 0.52, vector
+  0.871 / 0.79, hybrid (k = 10) 0.799 / 0.64, hybrid_rerank (k = 10, N = 10) 0.943 / 0.91, random 0.244 / 0.09.
+  Corpus-wide MRR / hits@5: keyword 0.061 / 0.05, vector 0.776 / 0.84, hybrid 0.467 / 0.80, hybrid_rerank 0.830 / 0.84.
+- **Switching rule (extended set): not met for any mode, so keyword stays the default.** Parts 1 and 2 are met by all
+  three (hits@1 wins-losses against keyword: vector 19-4, p = 0.003; hybrid 7-0, p = 0.016; hybrid_rerank 22-0,
+  p < 0.001). Part 3 fails for all three: p95 within the player 1115, 1088 and 1571 ms against keyword's 4 ms + 500.
+  Part 4 (agent eval) was not run. The rule is not changed after seeing the result.
+- **Latency:** time lost to rate-limit waits and retries is excluded; the run used Voyage's free-tier limits. Measured
+  from a local machine against local Postgres, so it is not the live demo's latency (keyword against Neon was not measured).
+- **Plain hybrid is held back by the pre-registered tie rule:** RRF ties go to first appearance and the keyword list comes
+  first, so corpus-wide 31 of the 40 questions with vector at rank 1 have hybrid at rank 2 (within the player, 10 of 44).
+  Reported as run; not changed.
+- **Coverage (14 of 70 without gold):** contract no answer 2, outdated 1, conflict 2, chunking split 2 (Lato, Azpilicueta:
+  the answer is split across two passages), short page 4, transfer, no answer 3 (Beck, Fischer, Maviram). Two of the "short
+  page" questions (ct-984093, ct-592498) have 0 passages in `text_passages`.
+- **After the run, from the saved rows (`--rebuild-report`; no Voyage call, no retrieval):** the report gained the
+  provenance line, the latency note, the category label and more decimals for cost. A bug was found: the permutation test
+  depended on question order, which came from a set and so varied between processes. It now uses a fixed order; p-values in
+  the report differ from those in MLflow by at most 0.002 (e.g. 0.032 logged, 0.030 reported). The permutation test is
+  secondary and not part of the switching rule; McNemar and all other metrics are unchanged.
+- **Cost:** evaluation 8,268 embedding + 190,028 rerank tokens, US$0.0040 at list price; recorded total for the milestone
+  US$0.0669; `--propose` not recorded (it ran before usage logging existed).
 
 ---
 

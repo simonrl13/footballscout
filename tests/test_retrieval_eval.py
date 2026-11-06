@@ -110,5 +110,5 @@ def test_coverage_categories_come_from_the_owner_notes():
     assert re_.coverage_category(contract, "(conflict) Wikipedia says otherwise") == "conflict"
     assert re_.coverage_category(contract, "(no answer) short page, no contract information.") == "short page"
     assert re_.coverage_category(contract, "(no answer) only an old contract") == "contract no answer"
-    assert re_.coverage_category(transfer, "(no answer) never says when") == "transfer no answer"
+    assert re_.coverage_category(transfer, "(no answer) never says when") == "transfer, no answer"
     assert re_.coverage_category(transfer, None) == "no owner note"

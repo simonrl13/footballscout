@@ -43,6 +43,9 @@ CONTRACT_WORDS = re.compile(r"\b(?:contract|extension|extended|signed|until|deal
 PROVISIONAL = "**Provisional, pending label review**: the owner has not yet approved the gold labels."
 LABELS = "Labels were reviewed by the owner with assistance from Claude, blind to retrieval mode."
 NOT_RECORDED = "not recorded"
+LATENCY = ("Latency columns: wall clock against local Postgres, Voyage calls included; time lost to rate-limit waits and "
+           "retries is excluded. The run used Voyage's free-tier limits (no payment method: 3 requests and 10K tokens per "
+           "minute, one call every 25 s).")
 
 
 def load(path) -> list[dict]:
@@ -307,7 +310,7 @@ def cost_table() -> list[str]:
 
 
 NOTE = re.compile(r"^> Note: (.*)$")
-CATEGORIES = ("contract no answer", "outdated", "conflict", "chunking split", "short page", "transfer no answer",
+CATEGORIES = ("contract no answer", "outdated", "conflict", "chunking split", "short page", "transfer, no answer",
               "no owner note")
 
 
@@ -330,7 +333,7 @@ def coverage_category(case: dict, note: str | None) -> str:
                            ("short page", "short page")):
         if word in low:
             return category
-    return "contract no answer" if case["type"] == "contract" else "transfer no answer"
+    return "contract no answer" if case["type"] == "contract" else "transfer, no answer"
 
 
 def coverage(cases: list[dict], gold: dict) -> list[str]:
@@ -376,16 +379,42 @@ def eval_cases() -> list[dict]:
 SETS = {"extended": lambda c: True, "original": lambda c: not c.get("extension")}  # the rule applies to "extended"
 
 
+def corpus_sizes(conn, cases: list[dict]) -> tuple[dict, list[int]]:
+    corpus = conn.execute("SELECT count(*) AS n FROM text_passages").fetchone()["n"]
+    per_player = [r["n"] for r in conn.execute("SELECT count(*) AS n FROM text_passages GROUP BY player_id")]
+    sizes = {c["id"]: {"player": len(passages(conn, "player_id = %s", (c["player_id"],))), "corpus": corpus} for c in cases}
+    conn.rollback()
+    return sizes, per_player
+
+
+def results_by_set(cases: list[dict], rows: list[dict], gold: dict, sizes: dict) -> dict:
+    results = {}
+    for name, keep in SETS.items():
+        ids = [c["id"] for c in cases if keep(c)]  # a list: the permutation test depends on the order
+        sub, g = [r for r in rows if r["id"] in ids], {i: gold[i] for i in ids}
+        results[name] = (summarize(sub, g, sizes), {(m, s): paired(sub, g, m, s) for m in retrieve.MODES[1:] for s in SCOPES})
+    return results
+
+
+def rebuild_report(labels_approved: bool, note: str | None) -> None:
+    """Rewrites the report from the saved rows of the last evaluation: no Voyage call, no retrieval, no MLflow run."""
+    run = [r for r in load(USAGE_LOG) if r["step"] == "evaluate"][-1]
+    retrieve.USAGE.update({u: run[u] for u in PRICE})
+    k, n = tuned()
+    cases, rows = eval_cases(), json.loads(RAW.read_text(encoding="utf-8"))
+    gold = gold_sets(cases)
+    with tools.connect() as conn:
+        sizes, per_player = corpus_sizes(conn, cases)
+    write_report(cases, rows, gold, sizes, per_player, results_by_set(cases, rows, gold, sizes), k, n, labels_approved,
+                 commit=run["commit"], date=run["date"][:10], note=note)
+
+
 def evaluate(labels_approved: bool) -> None:
     k, n = tuned()
     cases = eval_cases()
     gold, rows = gold_sets(cases), []
     with tools.connect() as conn:
-        corpus = conn.execute("SELECT count(*) AS n FROM text_passages").fetchone()["n"]
-        per_player = [r["n"] for r in conn.execute("SELECT count(*) AS n FROM text_passages GROUP BY player_id")]
-        sizes = {c["id"]: {"player": len(passages(conn, "player_id = %s", (c["player_id"],))), "corpus": corpus}
-                 for c in cases}
-        conn.rollback()
+        sizes, per_player = corpus_sizes(conn, cases)
         for mode in retrieve.MODES:
             for scope in SCOPES:
                 for c in cases:
@@ -396,11 +425,7 @@ def evaluate(labels_approved: bool) -> None:
                                  "rr": rr(ranked, rel), **{f"hits@{q}": hits(ranked, rel, q) for q in KS}})
                 RAW.write_text(json.dumps(rows) + "\n", encoding="utf-8", newline="\n")  # kept if a later step fails
                 print(mode, scope, "done", flush=True)
-    results = {}
-    for name, keep in SETS.items():
-        ids = {c["id"] for c in cases if keep(c)}
-        sub, g = [r for r in rows if r["id"] in ids], {i: gold[i] for i in ids}
-        results[name] = (summarize(sub, g, sizes), {(m, s): paired(sub, g, m, s) for m in retrieve.MODES[1:] for s in SCOPES})
+    results = results_by_set(cases, rows, gold, sizes)
     write_report(cases, rows, gold, sizes, per_player, results, k, n, labels_approved)
     log_mlflow(results, k, n, labels_approved)
 
@@ -408,7 +433,7 @@ def evaluate(labels_approved: bool) -> None:
 def decision(summary: dict, tests: dict, mode: str) -> list[str]:
     """The pre-registered switching rule, parts (1)-(3); part (4) needs the agent eval."""
     t, s, kw = tests[mode, "player"], summary[mode, "player"], summary["keyword", "player"]
-    return [f"(1) hits@1 within the player: {t['wins']} wins, {t['losses']} losses, McNemar p = {t['mcnemar_p']:.3f}: "
+    return [f"(1) hits@1 within the player: {t['wins']} wins, {t['losses']} losses, McNemar p {'' if t['mcnemar_p'] < 0.001 else '= '}{fmt_p(t['mcnemar_p'])}: "
             + ("met" if t["wins"] > t["losses"] and t["mcnemar_p"] < 0.05 else "not met"),
             f"(2) MRR within the player {s['mrr']:.3f} vs keyword {kw['mrr']:.3f}: " + ("met" if s["mrr"] > kw["mrr"] else "not met"),
             f"(3) p95 latency {s['p95_ms']:.0f} ms vs keyword {kw['p95_ms']:.0f} ms (limit +500): "
@@ -421,37 +446,42 @@ def verdict(summary: dict, tests: dict, mode: str) -> str:
     return ("parts 1–3 **met** (part 4, the agent eval, not yet run)" if met else "**not met**") + ". " + "; ".join(parts)
 
 
+def fmt_p(p: float) -> str:
+    return "< 0.001" if p < 0.001 else f"{p:.3f}"
+
+
 def tables(summary: dict, tests: dict, scope: str) -> list[str]:
     lines = ["| Mode | n | MRR | hits@1 | hits@3 | hits@5 | hits@10 | median ms | p95 ms | US$ per query |",
              "|---|---|---|---|---|---|---|---|---|---|"]
     for mode in (*retrieve.MODES, "random"):
         m = summary[mode, scope]
-        lat = "– | – | –" if mode == "random" else f"{m['median_ms']:.0f} | {m['p95_ms']:.0f} | {m['cost_usd']:.6f}"
+        lat = "– | – | –" if mode == "random" else f"{m['median_ms']:.0f} | {m['p95_ms']:.0f} | {m['cost_usd']:.8f}"
         lines.append(f"| {mode} | {m['n']} | {m['mrr']:.3f} | " + " | ".join(f"{m[f'hits@{x}']:.2f}" for x in KS)
                      + f" | {lat} |")
-    lines += ["", "| vs keyword | hits@1 wins | losses | McNemar p | MRR difference | permutation p |",
+    lines += ["", LATENCY, "", "| vs keyword | hits@1 wins | losses | McNemar p | MRR difference | permutation p |",
               "|---|---|---|---|---|---|"]
     for mode in retrieve.MODES[1:]:
         t = tests[mode, scope]
-        lines.append(f"| {mode} | {t['wins']} | {t['losses']} | {t['mcnemar_p']:.3f} | {t['mrr_diff']:+.3f} | "
-                     f"{t['perm_p']:.3f} |")
+        lines.append(f"| {mode} | {t['wins']} | {t['losses']} | {fmt_p(t['mcnemar_p'])} | {t['mrr_diff']:+.3f} | "
+                     f"{fmt_p(t['perm_p'])} |")
     return lines + [""]
 
 
-def write_report(cases, rows, gold, sizes, per_player, results, k, n, labels_approved) -> None:
+def write_report(cases, rows, gold, sizes, per_player, results, k, n, labels_approved, commit=None, date=None,
+                 note=None) -> None:
     q = statistics.quantiles(per_player, n=10, method="inclusive")
     mine = sorted(sizes[c["id"]]["player"] for c in cases)
     n_ext = sum(bool(c.get("extension")) for c in cases)
     lines = ["# Retrieval: keyword vs vector vs hybrid", ""]
     if not labels_approved:
         lines += [PROVISIONAL, ""]
-    lines += [LABELS, "", f"Commit `{git_commit()}`, {time.strftime('%Y-%m-%d')}. Pre-registration: docs/RESEARCH_LOG.md (2026-10-29, "
+    lines += [LABELS, "", *([note, ""] if note else []),
+              f"Commit `{commit or git_commit()}`, {date or time.strftime('%Y-%m-%d')}. Pre-registration: docs/RESEARCH_LOG.md (2026-10-29, "
               f"and its amendment). Questions: the original 36 (`scout/evals/text.jsonl`) and the extended set (+{n_ext} "
               f"transfer questions, `scout/evals/retrieval_extra.jsonl`; {len(cases)} in all). Query = the question "
               f"verbatim; top {DEPTH}. Gold: `scout/evals/retrieval_gold.jsonl` (sha256 `{sha256(GOLD)[:12]}`). "
               f"RRF k = {k}, rerank N = {n} (chosen on the dev split: `scout/evals/retrieval_tuned.json`). Embeddings "
-              "voyage-4-lite (1024 dimensions), rerank rerank-2.5-lite. Latency: wall clock against local Postgres, "
-              "Voyage calls included. Generated by `python -m scout.evals.retrieval_eval`.", "",
+              "voyage-4-lite (1024 dimensions), rerank rerank-2.5-lite. Generated by `python -m scout.evals.retrieval_eval`.", "",
               f"Passages per player (all {len(per_player):,} players): p10 {q[0]:.0f}, median "
               f"{statistics.median(per_player):.0f}, p90 {q[8]:.0f}, max {max(per_player)}. The questions' players: median "
               f"{statistics.median(mine):.0f}, min {mine[0]}, max {mine[-1]}. Random = the exact expectation of a random "
@@ -507,12 +537,15 @@ def main() -> None:
     step.add_argument("--propose", action="store_true")
     step.add_argument("--freeze", action="store_true")
     ap.add_argument("--labels-approved", action="store_true", help="only once the owner has approved the gold labels")
+    step.add_argument("--rebuild-report", action="store_true", help="from the saved rows; no Voyage call, no MLflow run")
+    ap.add_argument("--note", help="with --rebuild-report: a line for the report's header")
     ap.add_argument("--pace", type=float, default=21, help="seconds between Voyage calls (0 with standard limits)")
     a = ap.parse_args()
-    if not a.freeze:
-        throttle(a.pace, cache_queries=a.tune or a.propose)
     if a.freeze:
         return freeze()
+    if a.rebuild_report:
+        return rebuild_report(a.labels_approved, a.note)
+    throttle(a.pace, cache_queries=a.tune or a.propose)
     try:
         tune() if a.tune else propose() if a.propose else evaluate(a.labels_approved)
     finally:

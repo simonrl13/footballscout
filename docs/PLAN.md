@@ -434,6 +434,8 @@ Pre-registered here and in docs/RESEARCH_LOG.md (2026-10-29) before any retrieva
 - **Gold frozen (2026-11-06), before the evaluation run:** `scout/evals/retrieval_gold.jsonl`, sha256
   `18c5a86de3b376a1782cc094592f7eb9e6d83724b72088ecef9c324e1c6011a0`: 741 labels, 65 relevant, 56 of the 70 questions
   with gold, 14 without. Labels were reviewed by the owner with assistance from Claude, blind to retrieval mode.
+- **Provisional result (2026-11-06): switching rule not met for any mode** (part 3, p95 latency); keyword stays the
+  default. `reports/retrieval.md`, docs/RESEARCH_LOG.md.
 
 ---
 
