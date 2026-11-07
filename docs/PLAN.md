@@ -436,6 +436,10 @@ Pre-registered here and in docs/RESEARCH_LOG.md (2026-10-29) before any retrieva
   with gold, 14 without. Labels were reviewed by the owner with assistance from Claude, blind to retrieval mode.
 - **Provisional result (2026-11-06): switching rule not met for any mode** (part 3, p95 latency); keyword stays the
   default. `reports/retrieval.md`, docs/RESEARCH_LOG.md.
+- **Exploratory agent eval (pre-registered 2026-11-07, before any run; cannot change the switching decision):** keyword
+  vs hybrid_rerank on the dev set (37) and smoke set (5), on local servers. Reports pass counts, number-check and
+  injection results and end-to-end `/ask` latency (median, p95). No held-out run. Protocol: docs/RESEARCH_LOG.md
+  (2026-11-07).
 
 ---
 

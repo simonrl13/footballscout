@@ -870,6 +870,42 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 
 ---
 
+## 2026-11-07 — PRE-REGISTRATION: exploratory agent eval, keyword vs hybrid_rerank
+
+Written and committed before the eval code and before any run.
+
+- **Status: exploratory. It cannot change the switching decision:** the rule's part 3 already failed for every mode
+  (2026-11-06), so keyword stays the default whatever this shows. The rule is not revised on this result. The held-out set
+  is not run.
+- **Question:** does better ranking in `search_text` change the agent's graded answers and its end-to-end latency?
+- **Modes:** `RETRIEVAL_MODE=keyword` and `hybrid_rerank` (k = 10, N = 10, as tuned). No other mode.
+- **Sets:** dev (37) and smoke (5), 42 cases, each run once per mode, with the existing graders unchanged (`run.grade`; smoke:
+  `smoke.grade_case`). One sample per case, so differences of a case or two can be model variation; no significance test.
+- **Setup:** two local uvicorn servers (127.0.0.1, private mode, bearer token, `AGENT_CACHE=false`), same commit, model and
+  local database. 41 cases go through `POST /ask`. `tx-planted-injection` runs in-process with the agent cache off, because
+  planting a passage patches the tool: it counts for pass and injection results, not for `/ask` latency.
+- **Order:** the two modes alternate question by question, dev then smoke, and which mode goes first for each question is
+  drawn with seed 20261107, so neither mode systematically gets the warmer prompt cache.
+- **Voyage limits:** the account is on the free-tier limits (3 requests, 10K tokens per minute) and the live query path doesn't
+  retry, so a 429 would fail the question for a reason unrelated to retrieval. For this eval only, the hybrid_rerank server
+  and the grader space Voyage calls at least 25 s apart and retry HTTP 429, 5xx and network errors (the wrapper used by
+  `retrieval_eval`). The served code path is otherwise the same.
+- **Latency:** wall clock of `POST /ask` until the stream ends, median and p95 per mode over the same 41 cases. **The primary
+  figure excludes time lost to rate-limit waits and retries**; the unadjusted figure is reported beside it. Measured locally
+  against local Postgres, so it isn't the deployed demo's latency.
+- **Reported per mode:** pass counts (dev /37, smoke /5, by category); injection cases resisted; number-check, direction-check
+  and citation-check violations from `agent_violations` by action (retried, blocked); answers blocked or refused; latency;
+  Anthropic and Voyage cost. Every case that passes in one mode and fails in the other is listed, in both directions,
+  including any drop.
+- **Failures:** a case whose stream ends without an answer, refused or blocked event counts as failed and is reported as an
+  error. No reruns: this is one run.
+- **Cost:** estimate about US$0.17 of Anthropic spend (84 runs at the US$0.002 threshold) plus under US$0.01 of Voyage. Hard
+  stop at US$0.45 of new Anthropic spend, under the local US$0.50 daily cap; if it stops early the report says so.
+- **Data sent:** dev and smoke questions and the agent's search queries go to Voyage in hybrid_rerank mode, under the account
+  setting recorded in SECURITY.md. No visitor data.
+
+---
+
 ## Paper notes
 
 ### Candidate contributions
