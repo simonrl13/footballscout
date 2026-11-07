@@ -207,16 +207,32 @@ Bumped on 2026-11-07, the newest release at least two weeks old (no new packages
 | virtualenv (dev, via pre-commit) | 21.14.5 → 21.14.13 (2026-10-22) | CVE-2026-113725, CVE-2026-113722 |
 | certifi (via requests) | 2026.7.22 → 2026.10.23 (2026-10-23) | PYSEC-2026-4320 |
 | gitpython (local, via mlflow-skinny) | 3.2.0 → 3.2.1 (2026-10-14) | CVE-2026-114145 |
+| filelock (dev, via virtualenv) | 4.0.7 → 4.2.1 (2026-10-17) | 14 |
+| tornado (local, via jupyter) | 6.5.10 → 6.6 (2026-10-21) | 3. `notebooks/01_eda.ipynb` run on 6.6 |
+| mlflow, mlflow-skinny, mlflow-tracing (local, direct) | 3.16.1 → 3.17.2 (2026-10-21) | 3. **Migrates the tracking store:** see below |
 
-**Open on 2026-11-07, so CI's all-groups audit fails until they are resolved** (published since the last audit; none is in the
-runtime set, which still audits clean; owner's decision pending):
+**Open, so CI's all-groups audit fails until it is bumped** (not in the runtime set, which audits clean): pyasn1 0.6.4 (via
+google-auth), 4 advisories, fix 0.6.5 (released 2026-10-27), **eligible from 2026-11-10** under the two-week rule. A local
+preview with 0.6.5 and everything above finds no known vulnerabilities.
 
-| Package (group, via) | Advisories | Fix (released) | Note |
-|---|---|---|---|
-| filelock 4.0.7 (dev, via virtualenv) | 14 | 4.2.1 (2026-10-17), eligible | |
-| tornado 6.5.10 (local, via jupyter) | 3 | 6.6 (2026-10-21), eligible | |
-| mlflow 3.16.1 (local, direct) | 3 | 3.17.2 (2026-10-21), eligible | May need a tracking-store migration; not tested |
-| pyasn1 0.6.4 (via google-auth) | 4 | 0.6.5 (2026-10-27), **eligible from 2026-11-10** | Younger than the two-week rule |
+**Migrating the MLflow tracking store to 3.17.2.** Schema `b7e2c1a4d9f3` → `dc11669786a5`: 6 new, empty tables; no table
+dropped; no existing row changed. Tested on 2026-11-07 on copies of the store (187 runs), which kept their rows and read and wrote
+through the API, with the full test suite passing; the real store has not been migrated.
+
+**Any MLflow call on 3.17.2 migrates the store on first connect, a read included, and 3.16.1 then refuses it** ("Detected
+out-of-date database schema"). So back up before the first MLflow use after this bump, and expect branches still locked to 3.16.1
+to fail against the store until they pick up this lockfile. From the repo root, in Git Bash, with the MLflow UI stopped:
+
+```sh
+docker exec scout-db-1 sh -c 'pg_dump -U "$POSTGRES_USER" mlflow' > ../mlflow_before_3_17.sql   # back up, outside the repo
+uv sync
+uv run --env-file .env sh -c 'python -m mlflow db upgrade "$MLFLOW_TRACKING_URI"'
+docker exec scout-db-1 sh -c 'psql -U "$POSTGRES_USER" -d mlflow -Atc "select version_num from alembic_version; select count(*) from runs"'
+```
+
+The check should print `dc11669786a5` and the same run count as before. To roll back, restore the dump into a recreated database
+owned by `scout_mlflow` (the owner matters: without it the role can't create tables in `public`) and use the 3.16.1 lockfile; a
+copy restored this way read correctly on 3.16.1. There is no tested downgrade command.
 
 Bumped instead (fix older than two weeks): aiohttp 3.14.3 → 3.14.4 (8 advisories), virtualenv 21.14.1 → 21.14.5
 (3 of 4), opentelemetry-api 1.45.0 → 1.45.1 (CVE-2026-114603; with opentelemetry-sdk 1.45.1 and semantic-conventions
