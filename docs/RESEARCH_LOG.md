@@ -932,6 +932,24 @@ Written and committed before the eval code and before any run.
 
 ---
 
+## 2026-11-07 — Why keyword scored 35/37 fresh against 37/37 recorded
+
+No model calls: drafts from `agent_violations`, tool inputs from `agent_calls`, tools re-run read-only. Two causes, not one.
+
+- **`cmp-vinicius-haaland` (keyword): a false block by `numbers.unsupported`; the direction check didn't fire.** The tool gives
+  the share of the club's league minutes as `0.87`; the first draft wrote "87%", which the check flags. The retry fixed the body
+  to "(0.87)" but opened with `I converted the tool's 0.87 into "87%"`, so 87 was flagged again and the answer blocked. Every
+  number in both drafts matched a tool value. This corrects "looks like model variation" in the entry below: the wording varied,
+  but the block came from the check. Separately, the draft's "87% of his league's minutes" misstates the denominator (the
+  club's), which no number check can catch. Fix proposed on its own branch, `fix/number-check-share-percent`; graders unchanged.
+- **`un-fee` (keyword and hybrid_rerank): a different cause, unrelated to the number check.** The recorded answer says "my tools
+  don't hold official transfer fee records", which `fee_rule` requires; neither fresh answer says it. Also wording variation
+  under a fresh call, but with a correct grader result under the rule as written.
+- **History:** 10 of the 20 `number_check` violations logged so far flag this share-as-percent form (87 or 22), counting replays
+  of the same cached drafts; 3 of those also flag a derived 60.0, which is a correct flag.
+
+---
+
 ## Paper notes
 
 ### Candidate contributions

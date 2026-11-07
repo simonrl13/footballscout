@@ -206,6 +206,10 @@ variation; [reports/agent_eval_m8.md](reports/agent_eval_m8.md)):
 | Number-check violations (retried / blocked) | 1 / 1 | 1 / 0 |
 | `/ask` median / p95, s (excluding Voyage waits and retries; local) | 3.8 / 6.1 | 3.9 / 7.4 |
 
+Only 8 of the 41 `/ask` questions per mode called `search_text`, so this eval says little about retrieval quality. The one drop,
+`tx-yamal-loans` with hybrid_rerank, is a grader phrase gap: the answer says "I found no loan spells", which isn't in the
+grader's phrase list. The grader is unchanged, so it counts as a failure.
+
 The embeddings exist locally only and nothing was migrated; the demo still uses keyword. In the vector and hybrid modes,
 questions are sent to Voyage ([SECURITY.md](SECURITY.md)). Hosting them on Neon would have needed 219 MB at 1024 dimensions
 or 111.5 MB at 512 (measured locally). No new package is used (`urllib`).
