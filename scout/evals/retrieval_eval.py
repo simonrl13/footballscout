@@ -310,7 +310,8 @@ def cost_table() -> list[str]:
 
 
 NOTE = re.compile(r"^> Note: (.*)$")
-CATEGORIES = ("contract no answer", "outdated", "conflict", "chunking split", "short page", "transfer, no answer",
+CATEGORIES = ("contract no answer", "outdated", "conflict", "chunking split", "short page", "no passages in corpus",
+              "transfer, no answer",
               "no owner note")
 
 
@@ -325,8 +326,10 @@ def owner_notes() -> dict[str, str]:
     return notes
 
 
-def coverage_category(case: dict, note: str | None) -> str:
+def coverage_category(case: dict, note: str | None, passages_on_page: int = 1) -> str:
     low = (note or "").lower()
+    if not passages_on_page:
+        return "no passages in corpus"
     if not note:
         return "no owner note"
     for word, category in (("chunking", "chunking split"), ("conflict", "conflict"), ("outdated", "outdated"),
@@ -336,10 +339,10 @@ def coverage_category(case: dict, note: str | None) -> str:
     return "contract no answer" if case["type"] == "contract" else "transfer, no answer"
 
 
-def coverage(cases: list[dict], gold: dict) -> list[str]:
+def coverage(cases: list[dict], gold: dict, sizes: dict) -> list[str]:
     notes = owner_notes()
     missing = [c for c in cases if not gold[c["id"]]["player"]]
-    groups = {cat: [c for c in missing if coverage_category(c, notes.get(c["id"])) == cat] for cat in CATEGORIES}
+    groups = {cat: [c for c in missing if coverage_category(c, notes.get(c["id"]), sizes[c["id"]]["player"]) == cat] for cat in CATEGORIES}
     lines = ["## Coverage finding: questions without gold (not retrieval misses)", "",
              f"{len(missing)} of {len(cases)} questions have no passage that answers them under the review rules, so "
              "they are left out of hits@k and MRR: no mode can score on them.", "",
@@ -495,7 +498,7 @@ def write_report(cases, rows, gold, sizes, per_player, results, k, n, labels_app
     summary, tests = results["extended"]
     lines += ["## Switching rule (pre-registered, extended set), parts 1–3", ""]
     lines += [f"- **{mode}:** {verdict(summary, tests, mode)}" for mode in retrieve.MODES[1:]]
-    lines += ["", *coverage(cases, gold), *misses(cases, rows, gold, sizes), "## Voyage usage and cost", "", *cost_table(),
+    lines += ["", *coverage(cases, gold, sizes), *misses(cases, rows, gold, sizes), "## Voyage usage and cost", "", *cost_table(),
               "## Per question: rank of the first relevant passage in the top 10 (– none)", "",
               "| Question | Set | Page passages | Relevant (page / corpus) | "
               + " | ".join(f"{m} ({s})" for s in SCOPES for m in retrieve.MODES) + " |",

@@ -102,7 +102,8 @@ Latency columns: wall clock against local Postgres, Voyage calls included; time 
 | outdated | 1 | ct-361112 |
 | conflict | 2 | ct-474800, tr-724129-2023 |
 | chunking split | 2 | tr-320271-2019, tr-57500-2023 |
-| short page | 4 | ct-892221, ct-984093, ct-829874, ct-592498 |
+| short page | 2 | ct-892221, ct-829874 |
+| no passages in corpus | 2 | ct-984093, ct-592498 |
 | transfer, no answer | 3 | tr-273669-2018, tr-435796-2021, tr-700789-2024 |
 
 **Chunking splits:** the answer is on the page but divided across two passages, so no single passage answers the question alone (review rule 1):
@@ -120,9 +121,9 @@ Latency columns: wall clock against local Postgres, Voyage calls included; time 
 | tr-320271-2019 | chunking split | (no answer, chunking) the PSV loan passage says "immediately after signing the extension" without a date; the date (5 July 2019) is in the previous passage. |
 | tr-57500-2023 | chunking split | (no answer, chunking) the Atlético passage has no year; the 2023 date is only in the Chelsea departure passage. |
 | ct-892221 | short page | (no answer) short page, no contract information. |
-| ct-984093 | short page | (no answer) short page, no contract information. |
 | ct-829874 | short page | (no answer) short page, no contract information. |
-| ct-592498 | short page | (no answer) short page, no contract information. |
+| ct-984093 | no passages in corpus | (no answer) short page, no contract information. |
+| ct-592498 | no passages in corpus | (no answer) short page, no contract information. |
 | tr-273669-2018 | transfer, no answer | (no answer) the page lists SSV Ulm among his clubs but never says when he joined; the dated move to Ulm is the 2020 return. |
 | tr-435796-2021 | transfer, no answer | (no answer) the page covers Türkgücü München (2019) and Wolfsburg (2022); the 2021 move to Nürnberg isn't mentioned. |
 | tr-700789-2024 | transfer, no answer | (no answer) page names Tondela as current club but never states when he joined. |

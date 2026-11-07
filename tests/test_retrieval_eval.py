@@ -112,3 +112,4 @@ def test_coverage_categories_come_from_the_owner_notes():
     assert re_.coverage_category(contract, "(no answer) only an old contract") == "contract no answer"
     assert re_.coverage_category(transfer, "(no answer) never says when") == "transfer, no answer"
     assert re_.coverage_category(transfer, None) == "no owner note"
+    assert re_.coverage_category(contract, "(no answer) short page, no contract information.", 0) == "no passages in corpus"
