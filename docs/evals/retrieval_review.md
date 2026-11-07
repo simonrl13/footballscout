@@ -554,7 +554,7 @@ Candidates: 741 for 70 questions.
 **Q:** As of June 2026, until when does Thiago Balieiro's contract with Vitória Guimarães SC run?  
 **Truth (Transfermarkt):** 2029
 
-> Note: (no answer) short page, no contract information.
+> Note: (no passages in corpus) 0 rows in text_passages
 
 ## ct-847484
 
@@ -588,7 +588,7 @@ Candidates: 741 for 70 questions.
 **Q:** As of June 2026, until when does Tiago Manso's contract with CD Tondela run?  
 **Truth (Transfermarkt):** 2027
 
-> Note: (no answer) short page, no contract information.
+> Note: (no passages in corpus) 0 rows in text_passages
 ## ct-605395
 
 **Q:** As of June 2026, until when does Casper Widell's contract with Excelsior Rotterdam run?  
