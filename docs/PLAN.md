@@ -404,22 +404,22 @@ limit **$10/month** (owner, Anthropic Console), GCP budget alert at **$1** (owne
 Pre-registered here and in docs/RESEARCH_LOG.md (2026-10-29) before any retrieval or agent run. The live demo keeps
 `RETRIEVAL_MODE=keyword` until the owner approves the results.
 
-- [ ] Pre-registration (this entry and the RESEARCH_LOG entry), committed before any run.
-- [ ] `RETRIEVAL_MODE` = keyword | vector | hybrid | hybrid_rerank behind one interface (`scout/text/retrieve.py`);
+- [x] Pre-registration (this entry and the RESEARCH_LOG entry), committed before any run.
+- [x] `RETRIEVAL_MODE` = keyword | vector | hybrid | hybrid_rerank behind one interface (`scout/text/retrieve.py`);
   `search_text` keeps its input and output contract; keyword output and the citation footer byte-identical (test).
-- [ ] pgvector table `text_embeddings` on local Postgres (loader writes, reader SELECT only); chunks = the existing
+- [x] pgvector table `text_embeddings` on local Postgres (loader writes, reader SELECT only); chunks = the existing
   `text_passages` rows; idempotent ingestion; recipe in `data/embeddings_manifest.json`.
-- [ ] Embeddings: Voyage `voyage-4-lite` over REST (urllib, no new package). Rerank: Voyage `rerank-2.5-lite`. No local
+- [x] Embeddings: Voyage `voyage-4-lite` over REST (urllib, no new package). Rerank: Voyage `rerank-2.5-lite`. No local
   models. Exact token count and cost reported to the owner before the embedding run (owner OK required).
-- [ ] Storage measured locally with `pg_total_relation_size` at 1024 and 512 dimensions; **no Neon change without the
+- [x] Storage measured locally with `pg_total_relation_size` at 1024 and 512 dimensions; **no Neon change without the
   owner's OK.**
-- [ ] Dev split (24 questions, new seed, players disjoint from `text.jsonl`) to choose RRF k and rerank N.
-- [ ] Gold: string-match proposals plus pooled top 10 from every mode and scope, reviewed blind by the owner, frozen
+- [x] Dev split (24 questions, new seed, players disjoint from `text.jsonl`) to choose RRF k and rerank N.
+- [x] Gold: string-match proposals plus pooled top 10 from every mode and scope, reviewed blind by the owner, frozen
   with a hash. Results are "provisional, pending label review" until the owner approves the labels.
-- [ ] Report (`reports/retrieval.md`), MLflow runs, README "Retrieval: keyword vs hybrid", SECURITY.md (Voyage receives
+- [x] Report (`reports/retrieval.md`), MLflow runs, README "Retrieval: keyword vs hybrid", SECURITY.md (Voyage receives
   visitor questions in vector/hybrid modes; retention terms with source).
-- [ ] Agent eval with the best mode on a local server: dev set (37) and smoke set (5) first; held-out 20 once, only
-  after the owner's OK (this milestone's use).
+- [x] Agent eval on a local server: dev (37) and smoke (5), exploratory, keyword vs hybrid_rerank.
+- [ ] Held-out 20: not run (the rule's latency part had already failed; only with the owner's OK).
 - **Switching rule (fixed in advance):** the default changes from keyword to a mode only if, on the 36 questions within
   the question's player, (1) it has more questions with the first relevant passage at rank 1 than keyword, and the exact
   two-sided McNemar test on those paired hits@1 gives p < 0.05 (with no losses that takes 6 net wins; with losses more,
@@ -439,7 +439,9 @@ Pre-registered here and in docs/RESEARCH_LOG.md (2026-10-29) before any retrieva
 - **Exploratory agent eval (pre-registered 2026-11-07, before any run; cannot change the switching decision):** keyword
   vs hybrid_rerank on the dev set (37) and smoke set (5), on local servers. Reports pass counts, number-check and
   injection results and end-to-end `/ask` latency (median, p95). No held-out run. Protocol: docs/RESEARCH_LOG.md
-  (2026-11-07).
+  (2026-11-07). **Result (2026-11-07):** dev 35/37 in both modes, smoke 5/5 in both; `reports/agent_eval_m8.md`.
+- **Labels approved by the owner (2026-11-07);** report rebuilt from the saved rows, no new evaluation. No Neon migration, since
+  the default isn't switching.
 
 ---
 

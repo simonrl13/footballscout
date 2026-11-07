@@ -197,7 +197,9 @@ instance recycling.
 
 ## Retrieval embeddings (M8, local only)
 `RETRIEVAL_MODE` (keyword | vector | hybrid | hybrid_rerank) selects how `search_text` ranks passages; the default and
-the live demo's mode is **keyword**, which never calls Voyage. Nothing below exists on Neon yet.
+the live demo's mode is **keyword**, which never calls Voyage. **The embeddings exist locally only and the demo still uses
+keyword:** the switching rule wasn't met, so nothing was migrated to Neon (`docs/deploy/neon_embeddings.sql` is an unrun draft)
+and the deployed service has no Voyage key.
 - **New data store:** table `text_embeddings` (`db/embeddings.sql`) on local Postgres: one Voyage vector per Wikipedia
   passage plus the embedded text. Written only by `python -m scout.text.embed` as `scout_loader`; `scout_reader`
   (agent, API, MCP) has SELECT only. The recipe and every run's tokens, cost and Voyage account setting are in
@@ -219,7 +221,8 @@ the live demo's mode is **keyword**, which never calls Voyage. Nothing below exi
   [privacy policy](https://www.voyageai.com/privacy); read 2026-10-29). **Everything sent so far was sent with the
   opt-out inactive:** all passages embedded from 2026-10-30 03:12 UTC on (every row in `text_embeddings`), the next
   pending batch (sent in requests rejected with HTTP 429 and in a 16-passage probe whose vectors were discarded), and
-  the probe string "test", and the eval and dev questions (tuning, pooling, evaluation, under the same setting). All of it is public text or derived from public data; no visitor question has been sent. Nothing has been sent with the opt-out active; if it is turned on later, the
+  the probe string "test", the eval and dev questions (tuning, pooling, evaluation), and the agent eval's dev and smoke
+  questions and the agent's search queries (2026-11-07), under the setting as last reported. All of it is public text or derived from public data; no visitor question has been sent. Nothing has been sent with the opt-out active; if it is turned on later, the
   manifest records the setting per run, so the before/after split stays visible.
 - **Condition before any non-keyword mode goes live (owner's decision):** with the opt-out inactive, visitor questions
   would be stored by Voyage and could be used for training. Turning the opt-out on (and recording it here) is

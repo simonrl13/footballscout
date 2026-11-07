@@ -36,6 +36,9 @@ uv run --env-file .env python -m scout.agent.dashboard [--install]   # tracing d
 uv run --env-file .env python -m scout.evals.run [--ci] --max-usd 0.50   # dev-set evals (cached; re-record CI replay after prompt/tool changes)
 uv run --env-file .env python -m scout.evals.run --set heldout --confirm-heldout --reason "..."   # held-out: thresholds only, >= 20 cases, logged
 uv run --env-file .env python -m scout.evals.text_exp [--contracts]   # retrieval experiment A/B (pre-registered 2026-10-15); --contracts: no API
+uv run --env-file .env python -m scout.text.embed --count   # M8 embeddings (local only; --max-usd, --batch, --max-chars, --pace)
+uv run --env-file .env python -m scout.evals.retrieval_eval  # keyword vs vector vs hybrid (--tune, --propose, --freeze, --rebuild-report)
+uv run --env-file .env python -m scout.evals.agent_compare   # exploratory agent eval, keyword vs hybrid_rerank (--preflight: no API)
 SCOUT_DEMO_URL=... uv run --env-file .env python -m scout.evals.smoke --url-env SCOUT_DEMO_URL   # production smoke set (5, public limits)
 ```
 Use `127.0.0.1`, not `localhost`, in DB URLs (Postgres is published on IPv4 only; `localhost` tries IPv6 first and hangs).

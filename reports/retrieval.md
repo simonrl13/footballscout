@@ -1,7 +1,5 @@
 # Retrieval: keyword vs vector vs hybrid
 
-**Provisional, pending label review**: the owner has not yet approved the gold labels.
-
 Labels were reviewed by the owner with assistance from Claude, blind to retrieval mode.
 
 code: 5eb5a54 (the run started from this commit); the logged 28ee826-dirty reflects two later docs-only commits (cfbc63f, 28ee826) and the run's own output files. Permutation p-values here use a fixed question order (fixed after the run) and differ from those logged in MLflow by at most 0.002; no conclusion depends on them.
@@ -122,8 +120,8 @@ Latency columns: wall clock against local Postgres, Voyage calls included; time 
 | tr-57500-2023 | chunking split | (no answer, chunking) the Atlético passage has no year; the 2023 date is only in the Chelsea departure passage. |
 | ct-892221 | short page | (no answer) short page, no contract information. |
 | ct-829874 | short page | (no answer) short page, no contract information. |
-| ct-984093 | no passages in corpus | (no answer) short page, no contract information. |
-| ct-592498 | no passages in corpus | (no answer) short page, no contract information. |
+| ct-984093 | no passages in corpus | (no passages in corpus) 0 rows in text_passages |
+| ct-592498 | no passages in corpus | (no passages in corpus) 0 rows in text_passages |
 | tr-273669-2018 | transfer, no answer | (no answer) the page lists SSV Ulm among his clubs but never says when he joined; the dated move to Ulm is the 2020 return. |
 | tr-435796-2021 | transfer, no answer | (no answer) the page covers Türkgücü München (2019) and Wolfsburg (2022); the 2021 move to Nürnberg isn't mentioned. |
 | tr-700789-2024 | transfer, no answer | (no answer) page names Tondela as current club but never states when he joined. |

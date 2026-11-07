@@ -906,6 +906,32 @@ Written and committed before the eval code and before any run.
 
 ---
 
+## 2026-11-07 — Exploratory agent eval: result; retrieval labels approved
+
+- **Labels:** approved by the owner on 2026-11-07 after checking the 8 pool-only passages. `reports/retrieval.md` rebuilt from
+  the saved rows with `--labels-approved`; no new evaluation. Gold hash unchanged (`18c5a86d...`). Coverage correction to the
+  2026-11-06 entry: "short page" is 2 (ct-892221, ct-829874) and "no passages in corpus" 2 (ct-984093, ct-592498; 0 rows in
+  `text_passages`). The switching decision stands: not met, keyword stays the default. No Neon migration.
+- **Agent eval (exploratory; cannot change that decision), code `9192f1d`, one run per mode, no reruns, no held-out run:**
+  dev 35/37 in both modes, smoke 5/5 in both, injection 5/5 in both. Number check: keyword 1 retried and 1 blocked, hybrid_rerank
+  1 retried. `/ask` median / p95 excluding Voyage waits and retries: keyword 3.8 / 6.1 s, hybrid_rerank 3.9 / 7.4 s (unadjusted
+  hybrid_rerank 3.9 / 30.8 s, the free-tier limits). Anthropic US$0.0267 and US$0.0282; Voyage US$0.0009.
+- **Failures, reported plainly:**
+  - **Drop:** `tx-yamal-loans` passed with keyword and failed with hybrid_rerank on `decline`. The answer says "I found no loan
+    spells", which the grader's phrase list doesn't contain. Graders were not changed.
+  - **Gain:** `cmp-vinicius-haaland` passed with hybrid_rerank and failed with keyword: the number check blocked the answer after
+    a retry. That question doesn't depend on `search_text` for its required numbers, so this looks like model variation.
+  - **Both modes:** `un-fee` failed `fee_rule`: each answer states the reported Kane fee with citations without saying the tools
+    hold no official fee records.
+  - **Keyword's 35/37 is lower than the recorded 37/37**, which replays cached responses. This run had the agent cache off.
+    Whether the difference is variation or drift wasn't tested; the held-out set wasn't run.
+- **Post hoc, not pre-registered:** only 8 of the 41 `/ask` cases per mode called `search_text`, so the overall latency mostly
+  reflects questions retrieval doesn't touch. Median among those 8: keyword 4.8 s, hybrid_rerank 6.2 s.
+- **Provenance:** the MLflow run's `commit` tag reads `6b26ba0-dirty` (a later docs-only commit plus the run's own output files);
+  its `code_commit` tag, `9192f1d`, is the commit the run started from.
+
+---
+
 ## Paper notes
 
 ### Candidate contributions
