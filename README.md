@@ -26,6 +26,7 @@ The demo runs until 1 January 2027. After that, see the walkthrough video.
 - [x] **M5a** — MCP server (stdio, same 4 read-only tools) + 30-question text-free eval set with deterministic checks; CI replays a 13-case recorded subset without an API key. See [Evals and MCP (M5a)](#evals-and-mcp-m5a).
 - [x] **M4b (text, no extraction)** — `search_text` over the demo players' Wikipedia pages (Postgres full-text search), every answer citing the exact revision with the CC BY-SA notice; agent on Claude Haiku 5.5; tracing dashboard and prompt caching (M6 pieces). See [Agent](#agent-m4a-m4b).
 - [ ] LLM judge · rate limits (M6) · M7 — AWS deploy
+- [x] **M8** — keyword vs vector vs hybrid retrieval, pre-registered: switching rule not met, keyword stays the default. See [Retrieval](#retrieval-keyword-vs-hybrid-m8).
 
 ## Problem (from the SPEC)
 - **Unit:** one player on **1 September** each year, 2013–2024.
@@ -179,6 +180,61 @@ An exploratory check, run after the result and not used for any decision: scored
   | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 |
   |---|---|---|---|---|---|---|---|---|---|
   | 13.7% | 18.6% | 22.6% | 25.3% | 28.4% | 30.4% | 31.2% | 31.7% | 33.5% | 35.3% |
+
+## Retrieval: keyword vs hybrid (M8)
+
+**Switching rule not met; keyword stays the default.** All three alternatives beat keyword on hits@1 within the player and on
+MRR, but each misses the pre-registered p95 latency limit of keyword + 500 ms. Labels were reviewed by the owner with
+assistance from Claude, blind to retrieval mode.
+
+Extended set, 70 questions, 56 scored (questions with a relevant passage); full tables, including the original 36, in
+[reports/retrieval.md](reports/retrieval.md):
+
+| Mode | MRR, player | hits@1 | hits@3 | hits@5 | hits@10 | MRR, corpus | hits@5, corpus | p50 / p95 ms, player | hits@1 vs keyword (McNemar) |
+|---|---|---|---|---|---|---|---|---|---|
+| keyword | 0.692 | 0.52 | 0.84 | 0.93 | 0.98 | 0.061 | 0.05 | 3 / 4 | – |
+| vector | 0.871 | 0.79 | 0.95 | 0.96 | 1.00 | 0.776 | 0.84 | 543 / 1115 | 19 wins, 4 losses, p = 0.003 |
+| hybrid (RRF, k = 10) | 0.799 | 0.64 | 0.96 | 0.96 | 1.00 | 0.467 | 0.80 | 556 / 1088 | 7 wins, 0 losses, p = 0.016 |
+| hybrid_rerank (N = 10) | 0.943 | 0.91 | 0.98 | 0.98 | 1.00 | 0.830 | 0.84 | 1050 / 1571 | 22 wins, 0 losses, p < 0.001 |
+| random | 0.244 | 0.09 | 0.27 | 0.43 | 0.75 | 0.000 | 0.00 | – | – |
+
+Latency excludes time lost to rate-limit waits and retries; the run used Voyage's free-tier limits and measured from a local
+machine against local Postgres, Voyage calls included.
+
+**Lessons.** The latency budget was set relative to keyword's 4 ms rather than the ~6.6 s end-to-end `/ask`
+([reports/m7_latency.md](reports/m7_latency.md), warm median, n = 5), which made any per-query API mode fail by construction. A
+future experiment should pre-register a budget relative to end-to-end latency. The questions are templated and sent verbatim,
+whereas the agent writes its own search queries, so these ranks describe this question set. The review also found a chunking
+limit: for 2 of the 14 questions without gold (Lato, Azpilicueta), the answer is on the page but split across two passages, so
+no single passage answers it, whatever the ranking.
+
+**Exploratory agent eval** (pre-registered; it cannot change the decision; one run per mode, so a case or two can be model
+variation; [reports/agent_eval_m8.md](reports/agent_eval_m8.md)):
+
+| | keyword | hybrid_rerank |
+|---|---|---|
+| Dev set passed | 35/37 | 35/37 |
+| Smoke set passed | 5/5 | 5/5 |
+| Injection cases resisted | 5/5 | 5/5 |
+| Number-check violations (retried / blocked) | 1 / 1 | 1 / 0 |
+| `/ask` median / p95, s (excluding Voyage waits and retries; local) | 3.8 / 6.1 | 3.9 / 7.4 |
+
+Only 8 of the 41 `/ask` questions per mode called `search_text`, so this eval says little about retrieval quality. The one drop,
+`tx-yamal-loans` with hybrid_rerank, is a grader phrase gap: the answer says "I found no loan spells", which isn't in the
+grader's phrase list. The grader is unchanged, so it counts as a failure.
+
+The embeddings exist locally only and nothing was migrated; the demo still uses keyword. In the vector and hybrid modes,
+questions are sent to Voyage ([SECURITY.md](SECURITY.md)). Hosting them on Neon would have needed 219 MB at 1024 dimensions
+or 111.5 MB at 512 (measured locally). No new package is used (`urllib`).
+
+```sh
+uv run --env-file .env python -m scout.text.embed --max-usd 0.10 --batch 128 --max-chars 16000 --pace 30   # embeddings (idempotent)
+uv run --env-file .env python -m scout.evals.retrieval_eval --tune --pace 25      # k and N on the dev split
+uv run --env-file .env python -m scout.evals.retrieval_eval --propose --pace 25   # blind review file
+uv run --env-file .env python -m scout.evals.retrieval_eval --freeze              # gold from the review marks
+uv run --env-file .env python -m scout.evals.retrieval_eval --pace 25             # evaluation, report, MLflow
+uv run --env-file .env python -m scout.evals.agent_compare                        # exploratory agent eval
+```
 
 ## Test-set discipline
 The test set is evaluated at most once per milestone, only by `scout/ml/evaluate_test.py`, and every run is logged with date, commit and reason. **Disclosure:** in the earlier v0 design (Phase 2), the v0 test metrics were printed on every training run and viewed 4 times. No feature, hyperparameter or model decision was based on them; the only change made after viewing was switching the age-only baseline from median to mean, because of a metric artifact visible in validation too. v0 was then replaced by the SPEC design, with new splits.

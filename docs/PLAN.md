@@ -399,6 +399,50 @@ limit **$10/month** (owner, Anthropic Console), GCP budget alert at **$1** (owne
   - [ ] **Due 2026-12-15:** decide before the GCP trial ends (2027-01-01) whether to upgrade the billing account with
     hard caps, or to replace the live demo with a static page and the walkthrough video.
 
+### M8: keyword vs vector vs hybrid retrieval (plan approved 2026-10-29; branch `m8/hybrid-retrieval`)
+
+Pre-registered here and in docs/RESEARCH_LOG.md (2026-10-29) before any retrieval or agent run. The live demo keeps
+`RETRIEVAL_MODE=keyword` until the owner approves the results.
+
+- [x] Pre-registration (this entry and the RESEARCH_LOG entry), committed before any run.
+- [x] `RETRIEVAL_MODE` = keyword | vector | hybrid | hybrid_rerank behind one interface (`scout/text/retrieve.py`);
+  `search_text` keeps its input and output contract; keyword output and the citation footer byte-identical (test).
+- [x] pgvector table `text_embeddings` on local Postgres (loader writes, reader SELECT only); chunks = the existing
+  `text_passages` rows; idempotent ingestion; recipe in `data/embeddings_manifest.json`.
+- [x] Embeddings: Voyage `voyage-4-lite` over REST (urllib, no new package). Rerank: Voyage `rerank-2.5-lite`. No local
+  models. Exact token count and cost reported to the owner before the embedding run (owner OK required).
+- [x] Storage measured locally with `pg_total_relation_size` at 1024 and 512 dimensions; **no Neon change without the
+  owner's OK.**
+- [x] Dev split (24 questions, new seed, players disjoint from `text.jsonl`) to choose RRF k and rerank N.
+- [x] Gold: string-match proposals plus pooled top 10 from every mode and scope, reviewed blind by the owner, frozen
+  with a hash. Results are "provisional, pending label review" until the owner approves the labels.
+- [x] Report (`reports/retrieval.md`), MLflow runs, README "Retrieval: keyword vs hybrid", SECURITY.md (Voyage receives
+  visitor questions in vector/hybrid modes; retention terms with source).
+- [x] Agent eval on a local server: dev (37) and smoke (5), exploratory, keyword vs hybrid_rerank.
+- [ ] Held-out 20: not run (the rule's latency part had already failed; only with the owner's OK).
+- **Switching rule (fixed in advance):** the default changes from keyword to a mode only if, on the 36 questions within
+  the question's player, (1) it has more questions with the first relevant passage at rank 1 than keyword, and the exact
+  two-sided McNemar test on those paired hits@1 gives p < 0.05 (with no losses that takes 6 net wins; with losses more,
+  e.g. 8–1, 10–2); (2) its MRR within the player is higher; (3) its p95 latency is at most 500 ms above keyword's;
+  (4) the agent eval shows no regression (below). Otherwise keyword stays and the result is written up as negative.
+- **Amendment (2026-10-29, before any Voyage call or retrieval run; reason: string-match gold for only 24 of the 36 and
+  12 of the 24 dev questions, mostly missing for contracts):** transfer questions are added (seed 20261030, players
+  disjoint, kept as drawn) until 50 eval questions have a string-match gold passage, and the dev split is topped up
+  (seed 20261031) to about 24 with gold. Results are reported for the original 36 and the extended set; **the switching
+  rule applies to the extended set.** Contract questions without gold are left out of hits@k/MRR and reported as a
+  coverage finding. Procedure: docs/RESEARCH_LOG.md (amendment, 2026-10-29).
+- **Gold frozen (2026-11-06), before the evaluation run:** `scout/evals/retrieval_gold.jsonl`, sha256
+  `18c5a86de3b376a1782cc094592f7eb9e6d83724b72088ecef9c324e1c6011a0`: 741 labels, 65 relevant, 56 of the 70 questions
+  with gold, 14 without. Labels were reviewed by the owner with assistance from Claude, blind to retrieval mode.
+- **Provisional result (2026-11-06): switching rule not met for any mode** (part 3, p95 latency); keyword stays the
+  default. `reports/retrieval.md`, docs/RESEARCH_LOG.md.
+- **Exploratory agent eval (pre-registered 2026-11-07, before any run; cannot change the switching decision):** keyword
+  vs hybrid_rerank on the dev set (37) and smoke set (5), on local servers. Reports pass counts, number-check and
+  injection results and end-to-end `/ask` latency (median, p95). No held-out run. Protocol: docs/RESEARCH_LOG.md
+  (2026-11-07). **Result (2026-11-07):** dev 35/37 in both modes, smoke 5/5 in both; `reports/agent_eval_m8.md`.
+- **Labels approved by the owner (2026-11-07);** report rebuilt from the saved rows, no new evaluation. No Neon migration, since
+  the default isn't switching.
+
 ---
 
 ## 4. Budget and what to cut

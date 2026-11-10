@@ -741,6 +741,213 @@ Setting: annual 1-September snapshots, 2013–2024, of established players in se
 - **History:** run 1 5/5 (`2159956`), run 2 4/5 (`953862b`, v1 tool check), run 3 5/5 (`f9e228b`, v2). Past results
   stand.
 
+### 2026-10-29 — PRE-REGISTRATION: keyword vs vector vs hybrid retrieval for search_text (before any run)
+- **Question:** Does embedding-based or hybrid retrieval rank the passage that answers a question higher than the
+  current Postgres full-text search, at an acceptable latency, without hurting the agent?
+- **Corpus and units:** the 37,375 `text_passages` rows (2,616 players' Wikipedia pages as of the demo date; median 11
+  passages per player, p90 28, max 113). Every mode ranks these same rows; no new chunking.
+- **Modes (`RETRIEVAL_MODE`):**
+  - *keyword*: today's `search_text` SQL (`websearch_to_tsquery` over the question's words joined with `or`, ranked by
+    `ts_rank_cd`), unchanged.
+  - *vector*: cosine distance between the question embedded as a query and the passages embedded as documents, Voyage
+    `voyage-4-lite`, 1024 dimensions, stored as `halfvec`.
+  - *hybrid*: reciprocal rank fusion of the top 50 keyword and top 50 vector results, score = Σ 1/(k + rank).
+  - *hybrid_rerank*: the top N fused results reranked by Voyage `rerank-2.5-lite`.
+  - No local models (owner, 2026-10-29).
+- **Questions:** the 36 in `scout/evals/text.jsonl` (pre-registered 2026-10-15), the question text verbatim as the
+  query, the same k for every mode. Two scopes: **within the question's player** (`player_id` set, as the agent
+  usually calls it; primary) and **corpus-wide** (no `player_id`; second headline).
+- **Tuning on a separate dev split, never on the 36:** 24 new questions from `text_set.py`'s rules with a new seed
+  (20261029), 4 per type and band (4 × 2 types × 3 bands), players disjoint from the 36. Their gold is the string-match proposal only (not reviewed). RRF k ∈ {10, 30, 60} chosen by within-player MRR
+  on the dev split; then rerank N ∈ {10, 20, 30} the same way, with that k. Ties go to the smaller value. The chosen
+  values are committed before any of the 36 is retrieved.
+- **Gold passages (relevant = the passage states the answer for that player: the club joined in that window, or the
+  contract's expiry year):**
+  1. *String match*: passages on the player's page with an accepted club alias as whole words (accents folded) and the
+     year or a season containing it ("2018", "2018–19"); for contracts, the expiry year in a passage that mentions a
+     contract (contract, extension, extended, signed, until, deal).
+  2. *Pooling*: the top 10 of every mode in both scopes. Passages from other players' pages enter the pool only if they
+     contain the player's surname (folded); the rest are counted not relevant.
+  3. The owner reviews the union, blind to which mode or method proposed each passage (shuffled, seeded). The gold file
+     records each passage's origin (string match, pool, or both) and the owner's label; it is frozen with a SHA-256
+     hash before any metric is computed. Questions with no relevant passage are listed and left out of the metrics
+     (n reported).
+  - The 36 are retrieved once per mode for pooling before labels exist; metrics come only after the freeze. Results stay
+    **"provisional, pending label review"** until the owner approves the labels.
+- **Metrics:** primary **MRR within the player** (first relevant passage, top 10; 0 if none); secondary hits@1 within
+  the player, hits@3/5/10 and MRR within the player; corpus-wide MRR and hits@5 (second headline) and hits@1/3/10;
+  median and p95 latency per query (wall clock, including the Voyage calls); cost per query from the API's token counts.
+  Baseline: random ranking of the same candidates, computed exactly (expected reciprocal rank and hits@k given each
+  question's passage count and number of relevant passages). The passages-per-player distribution is reported.
+- **Tests:** exact two-sided McNemar on paired hits@1 within the player (each mode vs keyword); MRR differences with a
+  paired sign-flip permutation test (100,000 draws, seed 20261029), descriptive.
+- **Switching rule** (also in PLAN.md M8): a mode replaces keyword as the default only if (1) more questions have the
+  first relevant passage at rank 1 than with keyword, with McNemar p < 0.05 on the 36 pairs (6 net wins with no losses;
+  8–1 or 10–2 with losses); (2) its MRR within the player is higher; (3) its p95 latency is at most 500 ms above
+  keyword's; (4) no agent-eval regression. Otherwise keyword stays, written up as a negative result.
+- **Agent eval with the best mode (local server, live demo unchanged):** first the dev set (37) and the smoke set (5);
+  then, only after the owner's OK, the held-out 20 once (this milestone's use). No regression means: the same or more
+  passes than the latest keyword result on each set (dev 37/37, smoke 5/5, held-out per `docs/evals/HELDOUT_LOG.md`),
+  injection cases resisted 100%, and zero number-check violations reaching the user. Pass counts are reported exactly.
+- **Not touched:** the model test set, `evaluate_test.py`, `docs/TEST_LOG.md`.
+- **Known limitations:** 36 questions detect only large differences; within a player most pages are short (median 11
+  passages), so random ranking is a strong baseline there; the gold depends on what the pooled modes retrieved; the
+  questions come from Transfermarkt facts, so they favour passages that name a club or a year, where keyword search is
+  strong.
+- **Cost estimate:** the corpus is 11.04M characters (about 2.8M tokens at 4 characters a token; exact count before the
+  run). voyage-4-lite at US$0.02 per million tokens is under US$0.10 and inside the 200M free tokens; queries and
+  reranks are a few thousand tokens. Agent runs: about 62 at about US$0.002.
+
+### 2026-10-29 — AMENDMENT to the retrieval pre-registration (before any Voyage call or retrieval run)
+- **Reason:** gold coverage, found before any run by applying the string-match rule alone (no API, no retrieval): only
+  24 of the 36 questions have a string-match gold passage (16 of 18 transfer, 8 of 18 contract), and 12 of the 24 dev
+  questions (11 of 12 transfer, 1 of 12 contract). Wikipedia pages rarely state the June 2026 contract expiry year. With
+  about 24 scored questions the McNemar rule could rarely be met.
+- **Extended evaluation set** (`scout/evals/retrieval_extra.jsonl`, owner's decision): transfer questions only, built
+  with `text_set.py`'s transfer rules from players disjoint from the 36 and the dev split, seed 20261030. Candidates
+  (one question per player, that player's earliest eligible window) are shuffled per value band and taken round-robin
+  high, mid, low. They are added one at a time, and **every added question is kept**; adding stops as soon as 50
+  questions of the original 36 plus the extension have a string-match gold passage (pooling and review happen later and
+  don't change the set). Accepted names: Transfermarkt's name, the existing `ALIASES`, and an automatic short form (the
+  name without club-type words such as FC, CF, SC, AFC, SV; only if a word of 4+ letters remains). No aliases are added
+  by hand.
+- **Dev top-up** (`scout/evals/retrieval_dev.jsonl`): the same procedure, seed 20261031, players disjoint from the 36,
+  the dev split and the extension, until about 24 dev questions have a string-match gold passage (the existing 24 dev
+  questions are kept).
+- **Reporting:** results for the original 36 and for the extended set (36 + extension). **The switching rule applies
+  to the extended set.** Questions with no relevant passage after review are left out of hits@k and MRR; contract
+  questions among them are reported separately as a coverage finding (the share of contract questions whose answer the
+  corpus contains), not as retrieval misses.
+- Everything else in the 2026-10-29 pre-registration is unchanged.
+
+---
+
+## 2026-11-06 — Retrieval gold frozen (before the evaluation run)
+
+- **File:** `scout/evals/retrieval_gold.jsonl`, sha256 `18c5a86de3b376a1782cc094592f7eb9e6d83724b72088ecef9c324e1c6011a0`.
+  741 labels (one per candidate), 65 relevant, 56 of the 70 questions with gold, 14 without. Each row records its origin:
+  of the 65 relevant passages, 57 were proposed by both string match and the pool, 8 by the pool only, none by string
+  match only.
+- **Review:** labels were reviewed by the owner with assistance from Claude, blind to retrieval mode. The rules (1-10)
+  and the notes on questions without gold are in `docs/evals/retrieval_review.md`, sha256
+  `28a2f1bdcfe5a7eba32d77a2195b7cefa4a303a8bd14c1d159fa9fd8bd7c7da0`; the candidates' origins are in
+  `scout/evals/retrieval_candidates.json`.
+- **Checks before freezing:** 741 of 741 candidate lines parse, each under its own question; every line's text equals
+  the passage its ID maps to; no relevant passage is on another player's page, so corpus-wide gold equals within-player
+  gold.
+- **Status:** results stay "provisional, pending label review" until the owner approves the labels.
+- Dry run with fake vectors on 2026-11-06 to test the pipeline; keyword mode ran on the frozen gold but its output was deleted unread. Not an evaluation. Section headings and the coverage section, which contain no retrieval output, were viewed.
+
+---
+
+## 2026-11-06 — Keyword vs vector vs hybrid retrieval: provisional result (switching rule not met)
+
+- **Status: provisional, pending label review.** Labels were reviewed by the owner with assistance from Claude, blind to
+  retrieval mode. Full tables: `reports/retrieval.md`. MLflow run `0754435dfac74809bac8bd518e9df330`.
+- **Provenance:** code: 5eb5a54 (the run started from this commit); the logged 28ee826-dirty reflects two later docs-only commits (cfbc63f, 28ee826) and the run's own output files.
+- **Result, extended set, within the player (n = 56 of 70 questions):** MRR / hits@1: keyword 0.692 / 0.52, vector
+  0.871 / 0.79, hybrid (k = 10) 0.799 / 0.64, hybrid_rerank (k = 10, N = 10) 0.943 / 0.91, random 0.244 / 0.09.
+  Corpus-wide MRR / hits@5: keyword 0.061 / 0.05, vector 0.776 / 0.84, hybrid 0.467 / 0.80, hybrid_rerank 0.830 / 0.84.
+- **Switching rule (extended set): not met for any mode, so keyword stays the default.** Parts 1 and 2 are met by all
+  three (hits@1 wins-losses against keyword: vector 19-4, p = 0.003; hybrid 7-0, p = 0.016; hybrid_rerank 22-0,
+  p < 0.001). Part 3 fails for all three: p95 within the player 1115, 1088 and 1571 ms against keyword's 4 ms + 500.
+  Part 4 (agent eval) was not run. The rule is not changed after seeing the result.
+- **Latency:** time lost to rate-limit waits and retries is excluded; the run used Voyage's free-tier limits. Measured
+  from a local machine against local Postgres, so it is not the live demo's latency (keyword against Neon was not measured).
+- **Plain hybrid is held back by the pre-registered tie rule:** RRF ties go to first appearance and the keyword list comes
+  first, so corpus-wide 31 of the 40 questions with vector at rank 1 have hybrid at rank 2 (within the player, 10 of 44).
+  Reported as run; not changed.
+- **Coverage (14 of 70 without gold):** contract no answer 2, outdated 1, conflict 2, chunking split 2 (Lato, Azpilicueta:
+  the answer is split across two passages), short page 4, transfer, no answer 3 (Beck, Fischer, Maviram). Two of the "short
+  page" questions (ct-984093, ct-592498) have 0 passages in `text_passages`.
+- **After the run, from the saved rows (`--rebuild-report`; no Voyage call, no retrieval):** the report gained the
+  provenance line, the latency note, the category label and more decimals for cost. A bug was found: the permutation test
+  depended on question order, which came from a set and so varied between processes. It now uses a fixed order; p-values in
+  the report differ from those in MLflow by at most 0.002 (e.g. 0.032 logged, 0.030 reported). The permutation test is
+  secondary and not part of the switching rule; McNemar and all other metrics are unchanged.
+- **Cost:** evaluation 8,268 embedding + 190,028 rerank tokens, US$0.0040 at list price; recorded total for the milestone
+  US$0.0669; `--propose` not recorded (it ran before usage logging existed).
+
+---
+
+## 2026-11-07 — PRE-REGISTRATION: exploratory agent eval, keyword vs hybrid_rerank
+
+Written and committed before the eval code and before any run.
+
+- **Status: exploratory. It cannot change the switching decision:** the rule's part 3 already failed for every mode
+  (2026-11-06), so keyword stays the default whatever this shows. The rule is not revised on this result. The held-out set
+  is not run.
+- **Question:** does better ranking in `search_text` change the agent's graded answers and its end-to-end latency?
+- **Modes:** `RETRIEVAL_MODE=keyword` and `hybrid_rerank` (k = 10, N = 10, as tuned). No other mode.
+- **Sets:** dev (37) and smoke (5), 42 cases, each run once per mode, with the existing graders unchanged (`run.grade`; smoke:
+  `smoke.grade_case`). One sample per case, so differences of a case or two can be model variation; no significance test.
+- **Setup:** two local uvicorn servers (127.0.0.1, private mode, bearer token, `AGENT_CACHE=false`), same commit, model and
+  local database. 41 cases go through `POST /ask`. `tx-planted-injection` runs in-process with the agent cache off, because
+  planting a passage patches the tool: it counts for pass and injection results, not for `/ask` latency.
+- **Order:** the two modes alternate question by question, dev then smoke, and which mode goes first for each question is
+  drawn with seed 20261107, so neither mode systematically gets the warmer prompt cache.
+- **Voyage limits:** the account is on the free-tier limits (3 requests, 10K tokens per minute) and the live query path doesn't
+  retry, so a 429 would fail the question for a reason unrelated to retrieval. For this eval only, the hybrid_rerank server
+  and the grader space Voyage calls at least 25 s apart and retry HTTP 429, 5xx and network errors (the wrapper used by
+  `retrieval_eval`). The served code path is otherwise the same.
+- **Latency:** wall clock of `POST /ask` until the stream ends, median and p95 per mode over the same 41 cases. **The primary
+  figure excludes time lost to rate-limit waits and retries**; the unadjusted figure is reported beside it. Measured locally
+  against local Postgres, so it isn't the deployed demo's latency.
+- **Reported per mode:** pass counts (dev /37, smoke /5, by category); injection cases resisted; number-check, direction-check
+  and citation-check violations from `agent_violations` by action (retried, blocked); answers blocked or refused; latency;
+  Anthropic and Voyage cost. Every case that passes in one mode and fails in the other is listed, in both directions,
+  including any drop.
+- **Failures:** a case whose stream ends without an answer, refused or blocked event counts as failed and is reported as an
+  error. No reruns: this is one run.
+- **Cost:** estimate about US$0.17 of Anthropic spend (84 runs at the US$0.002 threshold) plus under US$0.01 of Voyage. Hard
+  stop at US$0.45 of new Anthropic spend, under the local US$0.50 daily cap; if it stops early the report says so.
+- **Data sent:** dev and smoke questions and the agent's search queries go to Voyage in hybrid_rerank mode, under the account
+  setting recorded in SECURITY.md. No visitor data.
+
+---
+
+## 2026-11-07 — Exploratory agent eval: result; retrieval labels approved
+
+- **Labels:** approved by the owner on 2026-11-07 after checking the 8 pool-only passages. `reports/retrieval.md` rebuilt from
+  the saved rows with `--labels-approved`; no new evaluation. Gold hash unchanged (`18c5a86d...`). Coverage correction to the
+  2026-11-06 entry: "short page" is 2 (ct-892221, ct-829874) and "no passages in corpus" 2 (ct-984093, ct-592498; 0 rows in
+  `text_passages`). The switching decision stands: not met, keyword stays the default. No Neon migration.
+- **Agent eval (exploratory; cannot change that decision), code `9192f1d`, one run per mode, no reruns, no held-out run:**
+  dev 35/37 in both modes, smoke 5/5 in both, injection 5/5 in both. Number check: keyword 1 retried and 1 blocked, hybrid_rerank
+  1 retried. `/ask` median / p95 excluding Voyage waits and retries: keyword 3.8 / 6.1 s, hybrid_rerank 3.9 / 7.4 s (unadjusted
+  hybrid_rerank 3.9 / 30.8 s, the free-tier limits). Anthropic US$0.0267 and US$0.0282; Voyage US$0.0009.
+- **Failures, reported plainly:**
+  - **Drop:** `tx-yamal-loans` passed with keyword and failed with hybrid_rerank on `decline`. The answer says "I found no loan
+    spells", which the grader's phrase list doesn't contain. Graders were not changed.
+  - **Gain:** `cmp-vinicius-haaland` passed with hybrid_rerank and failed with keyword: the number check blocked the answer after
+    a retry. That question doesn't depend on `search_text` for its required numbers, so this looks like model variation.
+  - **Both modes:** `un-fee` failed `fee_rule`: each answer states the reported Kane fee with citations without saying the tools
+    hold no official fee records.
+  - **Keyword's 35/37 is lower than the recorded 37/37**, which replays cached responses. This run had the agent cache off.
+    Whether the difference is variation or drift wasn't tested; the held-out set wasn't run.
+- **Post hoc, not pre-registered:** only 8 of the 41 `/ask` cases per mode called `search_text`, so the overall latency mostly
+  reflects questions retrieval doesn't touch. Median among those 8: keyword 4.8 s, hybrid_rerank 6.2 s.
+- **Provenance:** the MLflow run's `commit` tag reads `6b26ba0-dirty` (a later docs-only commit plus the run's own output files);
+  its `code_commit` tag, `9192f1d`, is the commit the run started from.
+
+---
+
+## 2026-11-07 — Why keyword scored 35/37 fresh against 37/37 recorded
+
+No model calls: drafts from `agent_violations`, tool inputs from `agent_calls`, tools re-run read-only. Two causes, not one.
+
+- **`cmp-vinicius-haaland` (keyword): a false block by `numbers.unsupported`; the direction check didn't fire.** The tool gives
+  the share of the club's league minutes as `0.87`; the first draft wrote "87%", which the check flags. The retry fixed the body
+  to "(0.87)" but opened with `I converted the tool's 0.87 into "87%"`, so 87 was flagged again and the answer blocked. Every
+  number in both drafts matched a tool value. This corrects "looks like model variation" in the entry below: the wording varied,
+  but the block came from the check. Separately, the draft's "87% of his league's minutes" misstates the denominator (the
+  club's), which no number check can catch. Fix proposed on its own branch, `fix/number-check-share-percent`; graders unchanged.
+- **`un-fee` (keyword and hybrid_rerank): a different cause, unrelated to the number check.** The recorded answer says "my tools
+  don't hold official transfer fee records", which `fee_rule` requires; neither fresh answer says it. Also wording variation
+  under a fresh call, but with a correct grader result under the rule as written.
+- **History:** 10 of the 20 `number_check` violations logged so far flag this share-as-percent form (87 or 22), counting replays
+  of the same cached drafts; 3 of those also flag a derived 60.0, which is a correct flag.
+
 ---
 
 ## Paper notes

@@ -195,6 +195,42 @@ instance recycling.
 - **Data:** the demo database holds the 2,649 demo players, 37,375 Wikipedia passages and revision metadata; no raw
   Kaggle tables and no full Wikipedia revisions.
 
+## Retrieval embeddings (M8, local only)
+`RETRIEVAL_MODE` (keyword | vector | hybrid | hybrid_rerank) selects how `search_text` ranks passages; the default and
+the live demo's mode is **keyword**, which never calls Voyage. **The embeddings exist locally only and the demo still uses
+keyword:** the switching rule wasn't met, so nothing was migrated to Neon (`docs/deploy/neon_embeddings.sql` is an unrun draft)
+and the deployed service has no Voyage key.
+- **New data store:** table `text_embeddings` (`db/embeddings.sql`) on local Postgres: one Voyage vector per Wikipedia
+  passage plus the embedded text. Written only by `python -m scout.text.embed` as `scout_loader`; `scout_reader`
+  (agent, API, MCP) has SELECT only. The recipe and every run's tokens, cost and Voyage account setting are in
+  `data/embeddings_manifest.json`.
+- **Secrets:** `VOYAGE_API_KEY` lives only in `.env` and is sent only in the `Authorization` header to
+  `api.voyageai.com` over HTTPS (urllib, no SDK). It is never logged; error output is limited to the HTTP status and
+  Voyage's message.
+- **SQL injection surface:** the vector queries are static SQL (`scout/text/retrieve.py`); the query vector, player ID,
+  model name and limit are bound parameters, and the mode is checked against a fixed list before use. No identifiers
+  come from input.
+- **What Voyage receives:** at ingestion, the public Wikipedia passages (CC BY-SA), nothing else. In the vector,
+  hybrid and hybrid_rerank modes, **every question sent to `search_text` is sent to Voyage** to be embedded (and
+  reranked, with up to N passages): on a public deployment that includes visitor questions. The M8 evals send the eval
+  questions (built from Transfermarkt data), not visitor text.
+- **Voyage account setting (reported by the owner on 2026-10-30): no payment method; training opt-out NOT active.**
+  By default Voyage may store inputs and use them to train its models; the opt-out (zero-day retention) needs a payment
+  method and an organization admin, and can't be reversed in the dashboard
+  ([FAQ](https://docs.voyageai.com/docs/faq), [terms](https://www.voyageai.com/tos),
+  [privacy policy](https://www.voyageai.com/privacy); read 2026-10-29). **Everything sent so far was sent with the
+  opt-out inactive:** all passages embedded from 2026-10-30 03:12 UTC on (every row in `text_embeddings`), the next
+  pending batch (sent in requests rejected with HTTP 429 and in a 16-passage probe whose vectors were discarded), and
+  the probe string "test", the eval and dev questions (tuning, pooling, evaluation), and the agent eval's dev and smoke
+  questions and the agent's search queries (2026-11-07), under the setting as last reported. All of it is public text or derived from public data; no visitor question has been sent. Nothing has been sent with the opt-out active; if it is turned on later, the
+  manifest records the setting per run, so the before/after split stays visible.
+- **Condition before any non-keyword mode goes live (owner's decision):** with the opt-out inactive, visitor questions
+  would be stored by Voyage and could be used for training. Turning the opt-out on (and recording it here) is
+  recommended first.
+- **Rate limits without a payment method:** 3 requests and 10K tokens per minute (Voyage's HTTP 429 message,
+  2026-10-30). Ingestion paces itself (`--batch`, `--pace`) and retries 429; the query path doesn't retry, so in a
+  live non-keyword mode a burst of visitors would get errors from `search_text`.
+
 ## Dependency exceptions
 **CI ignores no advisory** (since 2026-11-07): the exceptions below expired on 2026-11-02 and were not extended. New releases
 still follow the two-week rule.

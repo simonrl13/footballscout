@@ -1,0 +1,2 @@
+{"step": "evaluate", "date": "2026-11-06 22:45 UTC", "commit": "28ee826-dirty", "calls": 558, "embed_tokens": 8268, "rerank_tokens": 190028, "cost_usd_list_price": 0.003966}
+{"step": "agent_eval", "date": "2026-11-07 16:14 UTC", "commit": "9192f1d", "calls": 26, "embed_tokens": 52, "rerank_tokens": 45387, "cost_usd_list_price": 0.000909}

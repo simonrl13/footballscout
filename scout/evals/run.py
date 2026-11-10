@@ -248,7 +248,8 @@ class EvalTracer(agent.Tracer):
         self.violations.append({"numbers": detail["numbers"], "action": action, "answer": detail.get("answer")})
 
 
-def run_case(case: dict, client, tracer: EvalTracer, db, model: str, tools_off: frozenset = frozenset()) -> dict:
+def run_case(case: dict, client, tracer: EvalTracer, db, model: str, tools_off: frozenset = frozenset(),
+             use_cache: bool = True) -> dict:
     tracer.responses, tracer.new, tracer.violations, outputs, cited = {}, {}, [], [], {}
     real_run_tool, real_renumber = tools.run_tool, agent.renumber_refs
 
@@ -266,7 +267,7 @@ def run_case(case: dict, client, tracer: EvalTracer, db, model: str, tools_off: 
     tools.run_tool, agent.renumber_refs = recording_run_tool, capturing_renumber
     try:
         t0 = time.perf_counter()
-        events = list(agent.run(case["question"], client, tracer, db, model=model, use_cache=True, tools_off=tools_off))
+        events = list(agent.run(case["question"], client, tracer, db, model=model, use_cache=use_cache, tools_off=tools_off))
         seconds = time.perf_counter() - t0
     finally:
         tools.run_tool, agent.renumber_refs = real_run_tool, real_renumber
