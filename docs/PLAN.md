@@ -442,6 +442,11 @@ Pre-registered here and in docs/RESEARCH_LOG.md (2026-10-29) before any retrieva
   (2026-11-07). **Result (2026-11-07):** dev 35/37 in both modes, smoke 5/5 in both; `reports/agent_eval_m8.md`.
 - **Labels approved by the owner (2026-11-07);** report rebuilt from the saved rows, no new evaluation. No Neon migration, since
   the default isn't switching.
+- **Merged and deployed (2026-11-10), with the owner's go-ahead, in this order:** #61 (README live demo, no deploy), #69
+  (dependency audit, no ignores; pyasn1 0.6.5 added on the first day the two-week rule allowed), #70 (number check: share
+  factor as a percent), #68 (M8). Each of the last three deployed successfully and passed the 5-question smoke set (5/5).
+  The live demo still uses keyword retrieval. The MLflow tracking store was backed up, verified, and migrated to the
+  3.17.2 schema. docs/RESEARCH_LOG.md (2026-11-10).
 
 ---
 
