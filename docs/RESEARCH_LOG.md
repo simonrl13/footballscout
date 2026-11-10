@@ -950,6 +950,56 @@ No model calls: drafts from `agent_violations`, tool inputs from `agent_calls`, 
 
 ---
 
+## 2026-11-10 — PRE-REGISTRATION: text_exp re-run, keyword vs hybrid_rerank on the 36 questions
+
+Written and committed before any code change for it and before any run. **No spend until the owner approves this
+entry.** It cannot change the M8 switching decision: that rule failed on latency, and changing the default needs a new
+pre-registration with a latency budget relative to end-to-end `/ask` (M8 lessons).
+
+- **Question:** does the retrieval mode change the agent's answer accuracy on the questions behind the 2026-10-15
+  experiment (#41: arm A 24/36 correct with keyword `search_text`, arm B 4/36 without it)?
+- **Set and labels:** `scout/evals/text.jsonl` (36 questions), unchanged. Same automatic labels as `scout/evals/text_exp.py`
+  (`correct` / `declined` / `wrong`, released answer primary, first draft secondary, `supported`). The owner reviews every
+  wrong and declined label as in #41, **blind to mode** (the review file shows no mode, and rows are shuffled). The
+  graders are not changed.
+- **Arms (same commit, model `AGENT_MODEL`, prompt, tools and data):** K = the agent with `search_text`,
+  `RETRIEVAL_MODE=keyword`; H = the same, `RETRIEVAL_MODE=hybrid_rerank` (voyage-4-lite, rerank-2.5-lite, RRF k = 10,
+  N = 10 from `scout/evals/retrieval_tuned.json`), on local Postgres. No B arm: withholding `search_text` doesn't depend on
+  the mode. #41's 4/36 is quoted as context only.
+- **Fresh calls:** both arms run with the agent cache off, so K is re-measured under today's code and model, not replayed
+  from October. K is not compared with #41's 24/36 by any test; the difference is reported as context.
+- **Order:** for each question both arms run back to back, with the order of the pair drawn with seed 20261110. One run
+  per arm. A run is repeated only after a technical error (API 5xx, network), at most once, and reported.
+- **Voyage free-tier limits:** H's Voyage calls go through the existing throttle (`retrieval_eval.throttle`, as in
+  `agent_compare`). Time lost to waits and retries is subtracted from latency and reported. A tool error caused by a
+  rate limit counts as a technical error, not as an answer.
+- **Primary result:** correct released answers, K vs H, exact two-sided McNemar on the paired labels, alpha 0.05.
+- **Secondary (descriptive, no tests):**
+  - wrong answers, by arm (exact McNemar reported, as in #41);
+  - declined, by arm;
+  - first-draft correct, by arm;
+  - supported claims, by arm;
+  - per-question latency, median and p95, excluding Voyage waits;
+  - cost, by arm and in total.
+- **Power, stated in advance:** with 36 paired questions, 6 wins and 0 losses is the smallest split that reaches p < 0.05,
+  and about 8 net wins (22 points) are needed for 80% power with no losses. A result with p >= 0.05 is reported as
+  "no difference detectable at this size", not as "the modes are equal".
+- **Cost cap:** Anthropic `--max-usd 0.15` (#41 cost US$0.058 for 72 conversations; this run is 72 as well), Voyage
+  `--max-usd 0.01` (query embeddings plus reranking of at most 10 passages per call). The run stops at a cap and reports
+  how far it got.
+- **Code (after approval, before the run, in its own commit):** `text_exp` gains a `--modes keyword,hybrid_rerank` option
+  that replaces the A/B conditions, the cache switch and the throttle. The code commit and the run commit are recorded;
+  the run needs a clean tree.
+- **Outputs:**
+  - the report `reports/text_exp_modes.md`, with rows in a JSON file;
+  - a blind review file;
+  - an MLflow run;
+  - this log, with the result whatever it is.
+
+  No held-out run, nothing on Neon, and the deployed demo is unchanged.
+
+---
+
 ## Paper notes
 
 ### Candidate contributions
