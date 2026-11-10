@@ -245,6 +245,13 @@ Bumped instead (fix older than two weeks): aiohttp 3.14.3 → 3.14.4 (8 advisori
 - Rate limits are per IP (per /64 for IPv6): many addresses (a botnet, or clients with many /64s) can still use the whole daily spend cap, which then refuses everyone until UTC midnight. The cap bounds the cost, not availability.
 - **Number-check direction gap (found 2026-10-23, fixed the same day):** the number check compared magnitudes only, so an answer stating the opposite direction of the model's forecast ("a rise of 18.6%", "+18.6%", an interval "from +40.9% to -20.5%") passed it and could be released. Found by a smoke-grader test; no released answer in the recorded dev (37) or held-out (20) runs had done it (replay below). Fixed by the direction check; until the fix was deployed the public link stayed unshared.
 - The direction check flags clear contradictions only, in percentages only. It passes: a percentage with no stated direction or a negated one ("not expected to fall"); a magnitude the tool results hold with both signs (e.g. 18.6 and -18.6 for two players), since the stated direction can't be attributed (documented limitation, tested); numbers whose sign is unknown (the question, Wikipedia text).
+- **The number check can't catch a correct number with the wrong description.** It matches numbers, not what they describe:
+  "87% of his league's minutes" passes for a share of the *club's* league minutes of 0.87 (`cmp-vinicius-haaland`, 2026-11-07).
+  Catching that needs a validated judge, not a number check.
+- **A retry whose apology repeats the flagged number is blocked** although its corrected body is clean (`I converted the
+  tool's 0.87 into "87%"`, 2026-11-07). Fail-safe: nothing wrong is shown, but a good answer is lost. A future fix is a prompt
+  change to the retry feedback (reply with the corrected answer only), to be pre-registered in docs/RESEARCH_LOG.md and
+  measured with live calls before adoption. The prompt is unchanged.
 - The dev and held-out `quote` grader still ignores signs (kept on purpose: it backs the approved thresholds); the production check above is where direction is enforced.
 - The number check allows a number if some source number rounds to it, so small derived integers ("under 19" from an age of 18.8) can pass. Evals with an LLM judge (M5) cover derived claims.
 - The rest is completed in M6.

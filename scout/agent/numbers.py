@@ -2,7 +2,8 @@
 
 A number in the answer is supported if some source number, shown with the same number of decimals, equals it
 (so 38.4 supports "38.4" and "38"; a whole number may also truncate: 40.8 supports "40"), or the same holds for the
-source × 10^6 ("EUR 60.0m" supports "60,000,000").
+source × 10^6 ("EUR 60.0m" supports "60,000,000"). A "share of ..." factor in a tool result (player_value 0.87) also
+supports its percent form ("87%"), and only with a percent sign: other fractions (shap_log, goals per 90) don't.
 Signs are ignored here: "a fall of 38.4%" quotes -38.4. Directions are checked separately (contradictions(), since
 2026-10-23): a percentage whose stated direction contradicts the tool results is caught even when its magnitude matches.
 """
@@ -18,18 +19,41 @@ def numbers(text: str) -> list[str]:
     return NUMBER.findall(text)
 
 
+def _share_percents(sources: list[str]) -> set[float]:
+    """Percent forms of the "share of ..." factors in tool results' JSON. Text inside strings (Wikipedia) never counts."""
+    out = set()
+
+    def walk(x):
+        if isinstance(x, dict):
+            if str(x.get("factor", "")).startswith("share") and isinstance(x.get("player_value"), int | float):
+                out.add(round(x["player_value"] * 100, 2))
+            x = list(x.values())
+        if isinstance(x, list):
+            for v in x:
+                walk(v)
+    for s in sources:
+        try:
+            walk(json.loads(s))
+        except ValueError:
+            pass
+    return out
+
+
 def unsupported(answer: str, sources: list[str]) -> list[str]:
     """Numbers in `answer` that no source text supports (list markers like '1. ' are not claims)."""
     allowed = {float(n.replace(",", "")) for s in sources for n in numbers(s)}
     allowed |= {a * 1e6 for a in allowed}
+    shares = _share_percents(sources)
     # ponytail: rounding makes small integers easy to support ("under 19" passes via age 18.8); an eval with an
     # LLM judge catches derived claims, add per-claim attribution if that proves too loose.
-    out = []
-    for n in numbers(LIST_MARKER.sub("", answer)):
+    text, out = LIST_MARKER.sub("", answer), []
+    for m in NUMBER.finditer(text):
+        n = m.group()
         x = float(n.replace(",", ""))
         decimals = len(n.split(".")[1]) if "." in n else 0
+        pool = allowed | shares if PERCENT_AFTER.match(text, m.end()) else allowed
         # whole numbers may also truncate: "40 years old" from an age of 40.8 (evals, 2026-10-09)
-        if not any(round(a, decimals) == x or (decimals == 0 and int(a) == x) for a in allowed):
+        if not any(round(a, decimals) == x or (decimals == 0 and int(a) == x) for a in pool):
             out.append(n)
     return out
 
