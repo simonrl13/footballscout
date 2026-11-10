@@ -196,17 +196,42 @@ instance recycling.
   Kaggle tables and no full Wikipedia revisions.
 
 ## Dependency exceptions
-Advisories ignored in CI's all-groups `pip-audit` because the fixed release is younger than the two-week rule. None is
-in CISA's Known Exploited Vulnerabilities catalogue (checked 2026-10-21), and none is in the API image (its runtime
-set is audited with no ignores; CISA KEV re-checked for the later additions the same day). **Expire 2026-11-02**: after that date the CI step fails until they are bumped or
-reviewed again.
+**CI ignores no advisory** (since 2026-11-07): the exceptions below expired on 2026-11-02 and were not extended. New releases
+still follow the two-week rule.
 
-| Package (group, via) | Advisory | Fixed in (released) | Why it can wait |
-|---|---|---|---|
-| certifi 2026.7.22 (local, via mlflow → requests) | PYSEC-2026-4320 / GHSA-6q48-6c7w-9gw2: bundles emSign roots with compromised intermediate keys | 2026.10.19 (2026-10-19) | Local tooling only; requests to the affected CAs' sites aren't part of the pipeline |
-| pillow 12.3.0 (dev and local, via matplotlib) | 35 advisories (8 on 2026-10-21 at the first audit, 16 more later that day, 11 on 2026-10-22): CVE-2026-112390, CVE-2026-112391, CVE-2026-112392, CVE-2026-112393, CVE-2026-112395, CVE-2026-112396, CVE-2026-112397, CVE-2026-112399, CVE-2026-112400, CVE-2026-112401, CVE-2026-112402, CVE-2026-112404, CVE-2026-112405, CVE-2026-112406, CVE-2026-112891, CVE-2026-112892, CVE-2026-112893, CVE-2026-112894, CVE-2026-112895, CVE-2026-112896, CVE-2026-112897, CVE-2026-112899, CVE-2026-112900, CVE-2026-112901, CVE-2026-96636, CVE-2026-96637, CVE-2026-96638, CVE-2026-96639, CVE-2026-96640, CVE-2026-96641, CVE-2026-96642, CVE-2026-96643, CVE-2026-96644, CVE-2026-96778, GHSA-78g4-xqwv-q3g8; decoder bugs (TIFF, JPEG, GIF, EPS, PDF and others) | 13.0.0 (2026-10-16, a major version) | Only plots our own figures; never opens untrusted images |
-| virtualenv 21.14.5 (dev, via pre-commit) | CVE-2026-113725 / GHSA-vxj4-q4g9-crj7 (bash `activate` and an environment name containing `\$`); CVE-2026-113722 / GHSA-c978-59m8-c77v (POSIX console launchers read destination paths as shell syntax) | 21.14.7 (2026-10-12) and 21.14.9 (2026-10-17) | pre-commit creates its own environments under paths it chooses |
-| gitpython 3.2.0 (local, via mlflow-skinny) | CVE-2026-114145 | 3.2.1 (2026-10-14) | mlflow uses it to read our own repository's commit; no untrusted repositories |
+Bumped on 2026-11-07, the newest release at least two weeks old (no new packages):
+
+| Package (group, via) | From → to (released) | Advisories fixed |
+|---|---|---|
+| pillow (dev and local, via matplotlib) | 12.3.0 → 13.0.0 (2026-10-16, a major version) | 35, decoder bugs. Full test suite and `notebooks/01_eda.ipynb` plots run on 13.0.0 |
+| virtualenv (dev, via pre-commit) | 21.14.5 → 21.14.13 (2026-10-22) | CVE-2026-113725, CVE-2026-113722 |
+| certifi (via requests) | 2026.7.22 → 2026.10.23 (2026-10-23) | PYSEC-2026-4320 |
+| gitpython (local, via mlflow-skinny) | 3.2.0 → 3.2.1 (2026-10-14) | CVE-2026-114145 |
+| filelock (dev, via virtualenv) | 4.0.7 → 4.2.1 (2026-10-17) | 14 |
+| tornado (local, via jupyter) | 6.5.10 → 6.6 (2026-10-21) | 3. `notebooks/01_eda.ipynb` run on 6.6 |
+| mlflow, mlflow-skinny, mlflow-tracing (local, direct) | 3.16.1 → 3.17.2 (2026-10-21) | 3. **Migrates the tracking store:** see below |
+
+**Nothing open:** pyasn1 0.6.4 → 0.6.5 (via google-auth; 4 advisories; released 2026-10-27) was bumped on 2026-11-10, the
+first day the two-week rule allowed. Both audits run with no ignores.
+
+**Migrating the MLflow tracking store to 3.17.2.** Schema `b7e2c1a4d9f3` → `dc11669786a5`: 6 new, empty tables; no table
+dropped; no existing row changed. Tested on 2026-11-07 on copies of the store (187 runs), which kept their rows and read and wrote
+through the API, with the full test suite passing; the real store has not been migrated.
+
+**Any MLflow call on 3.17.2 migrates the store on first connect, a read included, and 3.16.1 then refuses it** ("Detected
+out-of-date database schema"). So back up before the first MLflow use after this bump, and expect branches still locked to 3.16.1
+to fail against the store until they pick up this lockfile. From the repo root, in Git Bash, with the MLflow UI stopped:
+
+```sh
+docker exec scout-db-1 sh -c 'pg_dump -U "$POSTGRES_USER" mlflow' > ../mlflow_before_3_17.sql   # back up, outside the repo
+uv sync
+uv run --env-file .env sh -c 'python -m mlflow db upgrade "$MLFLOW_TRACKING_URI"'
+docker exec scout-db-1 sh -c 'psql -U "$POSTGRES_USER" -d mlflow -Atc "select version_num from alembic_version; select count(*) from runs"'
+```
+
+The check should print `dc11669786a5` and the same run count as before. To roll back, restore the dump into a recreated database
+owned by `scout_mlflow` (the owner matters: without it the role can't create tables in `public`) and use the 3.16.1 lockfile; a
+copy restored this way read correctly on 3.16.1. There is no tested downgrade command.
 
 Bumped instead (fix older than two weeks): aiohttp 3.14.3 → 3.14.4 (8 advisories), virtualenv 21.14.1 → 21.14.5
 (3 of 4), opentelemetry-api 1.45.0 → 1.45.1 (CVE-2026-114603; with opentelemetry-sdk 1.45.1 and semantic-conventions
