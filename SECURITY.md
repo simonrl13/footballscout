@@ -211,9 +211,8 @@ Bumped on 2026-11-07, the newest release at least two weeks old (no new packages
 | tornado (local, via jupyter) | 6.5.10 → 6.6 (2026-10-21) | 3. `notebooks/01_eda.ipynb` run on 6.6 |
 | mlflow, mlflow-skinny, mlflow-tracing (local, direct) | 3.16.1 → 3.17.2 (2026-10-21) | 3. **Migrates the tracking store:** see below |
 
-**Open, so CI's all-groups audit fails until it is bumped** (not in the runtime set, which audits clean): pyasn1 0.6.4 (via
-google-auth), 4 advisories, fix 0.6.5 (released 2026-10-27), **eligible from 2026-11-10** under the two-week rule. A local
-preview with 0.6.5 and everything above finds no known vulnerabilities.
+**Nothing open:** pyasn1 0.6.4 → 0.6.5 (via google-auth; 4 advisories; released 2026-10-27) was bumped on 2026-11-10, the
+first day the two-week rule allowed. Both audits run with no ignores.
 
 **Migrating the MLflow tracking store to 3.17.2.** Schema `b7e2c1a4d9f3` → `dc11669786a5`: 6 new, empty tables; no table
 dropped; no existing row changed. Tested on 2026-11-07 on copies of the store (187 runs), which kept their rows and read and wrote
