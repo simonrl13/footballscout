@@ -290,4 +290,14 @@ Bumped instead (fix older than two weeks): aiohttp 3.14.3 → 3.14.4 (8 advisori
   measured with live calls before adoption. The prompt is unchanged.
 - The dev and held-out `quote` grader still ignores signs (kept on purpose: it backs the approved thresholds); the production check above is where direction is enforced.
 - The number check allows a number if some source number rounds to it, so small derived integers ("under 19" from an age of 18.8) can pass. Evals with an LLM judge (M5) cover derived claims.
+- **GitHub secret scanning and push protection are off** on this public repository (found 2026-11-10). Secrets are caught
+  by gitleaks in pre-commit and in CI, but a local hook can be skipped, and push protection would block a secret on
+  GitHub's side before it lands. Enabling it is a repository setting, free for public repositories.
+- **Dependabot alerts are off** (found 2026-11-10). New advisories against `main` don't raise an alert. Mitigated since
+  2026-11-13 by a weekly scheduled run of CI on `main`, which includes both `pip-audit` sets (Mondays). A failure emails the
+  owner. GitHub disables scheduled workflows after 60 days without repository activity, so the weekly run stops when
+  the project goes quiet.
+- **25 open CodeQL alerts** (2026-11-10): all code-quality warnings or notes (implicit string concatenation, mixed
+  returns, unused imports and similar), none with a security severity. The merge ruleset blocks high or higher only,
+  so they don't block merges, but they could hide a new, real alert.
 - The rest is completed in M6.
