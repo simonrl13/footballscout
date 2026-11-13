@@ -227,8 +227,11 @@ grader's phrase list. The grader is unchanged, so it counts as a failure.
 [reports/text_exp_modes.md](reports/text_exp_modes.md)): on the 36 transfer and contract questions, with fresh calls,
 keyword and hybrid_rerank each answered 24/36 correctly, with 0 wrong. Each mode got one question the other didn't
 (exact McNemar p = 1.000), so no difference is detectable at this size. That doesn't show the modes are equal.
-Latency excluding Voyage waits, median / p95: keyword 4.4 / 6.4 s, hybrid_rerank 5.9 / 8.9 s. Labels are automatic until
-the owner's blind review of the 24 wrong or declined answers.
+Latency excluding Voyage waits, median / p95: keyword 4.4 / 6.4 s, hybrid_rerank 5.9 / 8.9 s. The owner's blind review
+confirmed all 24 declined labels. In both questions where the modes disagreed, the losing arm called no tool: one refused
+the question as out of scope, and in the other the agent asked who the abbreviated name was. So neither difference comes
+from retrieval. The review also found that the agent sometimes declines when the cited passage gives enough to work out
+the year (a four-year deal signed in July 2025, for example).
 
 The embeddings exist locally only and nothing was migrated; the demo still uses keyword. In the vector and hybrid modes,
 questions are sent to Voyage ([SECURITY.md](SECURITY.md)). Hosting them on Neon would have needed 219 MB at 1024 dimensions

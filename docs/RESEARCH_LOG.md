@@ -1041,8 +1041,23 @@ Run as pre-registered on 2026-11-10 (code `3fd76c1`, model `claude-haiku-5-5`, l
   5.9 / 8.9 s (46.3 / 99.4 s unadjusted, free-tier Voyage throttle); cost Anthropic US$0.0297 keyword + US$0.0259
   hybrid_rerank, Voyage US$0.0010 (83 calls). Total with the aborted attempt: about US$0.073.
 - **Context, not tested:** keyword re-measured today gives 24/36, the same count as #41 in October.
-- **Labels are automatic** until the owner's blind review of the 24 wrong/declined answers
-  (`docs/evals/text_modes_review.md`); the result above may change after it and will be updated here.
+- **Owner's blind review (2026-11-13):** all 24 automatic labels (all `declined`; no `wrong`) confirmed, so the result
+  stands as above. Marks and notes are in `docs/evals/text_modes_review.md`; unblinded afterwards from `review_key`.
+- **The two discordant pairs aren't retrieval differences:** in both, the losing arm called no tool at all. In
+  `tr-148455-2017` (Salah), hybrid_rerank refused the question as out of scope (R01). In `tr-808475-2022`, keyword asked
+  who "MT" is (R15), and the owner judged the item itself unusable as written. So the run shows no answer difference that
+  can be traced to the retrieval mode.
+- **Owner's notes, recorded as findings (no change made):**
+  - **Derivable answers declined:** a duration plus a signing date in the cited passage gives the year, but the agent
+    didn't derive it. This happened for Díaz (R07 keyword, R10 hybrid_rerank) and Ouattara (R05 keyword, R22
+    hybrid_rerank). R05 also says "late 2020s" where the passage gives 2030.
+  - **Stale Wikipedia:** Linthorst (R03, R11), so declining was right.
+  - **Retrieval recall:** Fischer's 2021 move is missing from the passages in both modes (R02, R08).
+  - **Answer quality:**
+    - R12 calls the 2026 revision "a 2023 edit", which is unsupported;
+    - R13 names a revision without a Sources block;
+    - R19 has a garbled sentence;
+    - R10's "central estimate, not a prediction" contradicts itself.
 - **Decision:** none needed; the M8 switching decision stands and keyword stays the default.
 
 ---
