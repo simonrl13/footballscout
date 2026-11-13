@@ -950,6 +950,30 @@ No model calls: drafts from `agent_violations`, tool inputs from `agent_calls`, 
 
 ---
 
+## 2026-11-10 — M8 merged and deployed; dependency audit green; MLflow store migrated
+
+Merged with the owner's go-ahead (squash, no bypass), each after all required checks passed on a branch up to date with
+`main`. One smoke run (the 5 pre-registered questions, `scout/evals/smoke.jsonl`) after each deploy; no held-out run.
+
+| PR | Merge commit | Deploy | Smoke | Smoke cost (US$) |
+|---|---|---|---|---|
+| #61 README live demo | `1c68713` | none (docs only) | – | – |
+| #69 dependency audit (pillow, virtualenv, certifi, gitpython, filelock, tornado, mlflow 3.17.2, pyasn1 0.6.5) | `2284146` | success | 5/5 | 0.0033 |
+| #70 number check: share factor as a percent | `b537fe0` | success | 5/5 | 0.0014 |
+| #68 M8 retrieval (keyword stays the default) | `5be21ef` | success | 5/5 | 0.0016 |
+
+- **pyasn1 0.6.5:** released 2026-10-27 06:32 UTC, added on 2026-11-10, the first day the two-week rule allowed. Both
+  `pip-audit` sets pass with no ignores.
+- **The live demo uses keyword retrieval:** a `/text/search` call after the #68 deploy returned the same 5 passages, in the
+  same order, as local keyword retrieval. The deploy sets no `RETRIEVAL_MODE` and has no Voyage key, and Neon has no
+  embeddings.
+- **MLflow tracking store:** backed up before any MLflow call on 3.17.2. The backup was verified by restoring it into a
+  scratch database: schema `b7e2c1a4d9f3`, 187 runs, 1,505 metrics, 59 tables, the same as the live store. The dump is
+  kept outside the repo. The store was then migrated to `dc11669786a5` (65 tables). Counts are unchanged, and all 187 runs
+  read back through the API, 1,471 latest metrics and 899 params among them.
+- **Provenance:** the smoke reports' commit carries `-dirty` because `.claude/settings.json` held uncommitted
+  permission rules (since moved to `settings.local.json`). No code was uncommitted; the deployed code is the merge
+  commit named in each report.
 ## 2026-11-10 — PRE-REGISTRATION: text_exp re-run, keyword vs hybrid_rerank on the 36 questions
 
 Written and committed before any code change for it and before any run. **No spend until the owner approves this
