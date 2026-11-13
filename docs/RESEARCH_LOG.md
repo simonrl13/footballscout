@@ -1024,6 +1024,29 @@ pre-registration with a latency budget relative to end-to-end `/ask` (M8 lessons
 
 ---
 
+## 2026-11-13 — text_exp re-run, keyword vs hybrid_rerank: result
+
+Run as pre-registered on 2026-11-10 (code `3fd76c1`, model `claude-haiku-5-5`, local Postgres, agent cache off; report
+[reports/text_exp_modes.md](../reports/text_exp_modes.md), rows in `reports/text_exp_modes.json`).
+
+- **Technical repeat (reported, per the protocol):** the first attempt stopped after 12 of 36 questions when Docker Desktop
+  exited and closed the Postgres connection. It wrote no outputs; it cost US$0.0167. The whole run was repeated once from the
+  start, same commit and seed, with the Anthropic cap lowered to US$0.13 so the total stayed within the approved US$0.15.
+  The partial answers are not used. No API retries in the repeated run.
+- **Primary:** correct released answers 24/36 keyword vs 24/36 hybrid_rerank; only keyword correct 1 (`tr-148455-2017`),
+  only hybrid_rerank correct 1 (`tr-808475-2022`), exact McNemar p = 1.000. **No difference detectable at this size** (not
+  "equal"); the study was powered for about 8 net wins.
+- **Secondary:** wrong answers 0 and 0; declined 12 and 12; first drafts identical to released answers in both arms;
+  supported claims 24/24 in both; latency excluding Voyage waits, median / p95, keyword 4.4 / 6.4 s, hybrid_rerank
+  5.9 / 8.9 s (46.3 / 99.4 s unadjusted, free-tier Voyage throttle); cost Anthropic US$0.0297 keyword + US$0.0259
+  hybrid_rerank, Voyage US$0.0010 (83 calls). Total with the aborted attempt: about US$0.073.
+- **Context, not tested:** keyword re-measured today gives 24/36, the same count as #41 in October.
+- **Labels are automatic** until the owner's blind review of the 24 wrong/declined answers
+  (`docs/evals/text_modes_review.md`); the result above may change after it and will be updated here.
+- **Decision:** none needed; the M8 switching decision stands and keyword stays the default.
+
+---
+
 ## Paper notes
 
 ### Candidate contributions

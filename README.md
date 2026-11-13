@@ -223,6 +223,13 @@ Only 8 of the 41 `/ask` questions per mode called `search_text`, so this eval sa
 `tx-yamal-loans` with hybrid_rerank, is a grader phrase gap: the answer says "I found no loan spells", which isn't in the
 grader's phrase list. The grader is unchanged, so it counts as a failure.
 
+**Text questions re-run** (pre-registered 2026-11-10; it cannot change the decision;
+[reports/text_exp_modes.md](reports/text_exp_modes.md)): on the 36 transfer and contract questions, with fresh calls,
+keyword and hybrid_rerank each answered 24/36 correctly, with 0 wrong. Each mode got one question the other didn't
+(exact McNemar p = 1.000), so no difference is detectable at this size. That doesn't show the modes are equal.
+Latency excluding Voyage waits, median / p95: keyword 4.4 / 6.4 s, hybrid_rerank 5.9 / 8.9 s. Labels are automatic until
+the owner's blind review of the 24 wrong or declined answers.
+
 The embeddings exist locally only and nothing was migrated; the demo still uses keyword. In the vector and hybrid modes,
 questions are sent to Voyage ([SECURITY.md](SECURITY.md)). Hosting them on Neon would have needed 219 MB at 1024 dimensions
 or 111.5 MB at 512 (measured locally). No new package is used (`urllib`).
