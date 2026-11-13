@@ -974,6 +974,91 @@ Merged with the owner's go-ahead (squash, no bypass), each after all required ch
 - **Provenance:** the smoke reports' commit carries `-dirty` because `.claude/settings.json` held uncommitted
   permission rules (since moved to `settings.local.json`). No code was uncommitted; the deployed code is the merge
   commit named in each report.
+## 2026-11-10 — PRE-REGISTRATION: text_exp re-run, keyword vs hybrid_rerank on the 36 questions
+
+Written and committed before any code change for it and before any run. **No spend until the owner approves this
+entry.** It cannot change the M8 switching decision: that rule failed on latency, and changing the default needs a new
+pre-registration with a latency budget relative to end-to-end `/ask` (M8 lessons).
+
+- **Question:** does the retrieval mode change the agent's answer accuracy on the questions behind the 2026-10-15
+  experiment (#41: arm A 24/36 correct with keyword `search_text`, arm B 4/36 without it)?
+- **Set and labels:** `scout/evals/text.jsonl` (36 questions), unchanged. Same automatic labels as `scout/evals/text_exp.py`
+  (`correct` / `declined` / `wrong`, released answer primary, first draft secondary, `supported`). The owner reviews every
+  wrong and declined label as in #41, **blind to mode** (the review file shows no mode, and rows are shuffled). The
+  graders are not changed.
+- **Arms (same commit, model `AGENT_MODEL`, prompt, tools and data):** K = the agent with `search_text`,
+  `RETRIEVAL_MODE=keyword`; H = the same, `RETRIEVAL_MODE=hybrid_rerank` (voyage-4-lite, rerank-2.5-lite, RRF k = 10,
+  N = 10 from `scout/evals/retrieval_tuned.json`), on local Postgres. No B arm: withholding `search_text` doesn't depend on
+  the mode. #41's 4/36 is quoted as context only.
+- **Fresh calls:** both arms run with the agent cache off, so K is re-measured under today's code and model, not replayed
+  from October. K is not compared with #41's 24/36 by any test; the difference is reported as context.
+- **Order:** for each question both arms run back to back, with the order of the pair drawn with seed 20261110. One run
+  per arm. A run is repeated only after a technical error (API 5xx, network), at most once, and reported.
+- **Voyage free-tier limits:** H's Voyage calls go through the existing throttle (`retrieval_eval.throttle`, as in
+  `agent_compare`). Time lost to waits and retries is subtracted from latency and reported. A tool error caused by a
+  rate limit counts as a technical error, not as an answer.
+- **Primary result:** correct released answers, K vs H, exact two-sided McNemar on the paired labels, alpha 0.05.
+- **Secondary (descriptive, no tests):**
+  - wrong answers, by arm (exact McNemar reported, as in #41);
+  - declined, by arm;
+  - first-draft correct, by arm;
+  - supported claims, by arm;
+  - per-question latency, median and p95, excluding Voyage waits;
+  - cost, by arm and in total.
+- **Power, stated in advance:** with 36 paired questions, 6 wins and 0 losses is the smallest split that reaches p < 0.05,
+  and about 8 net wins (22 points) are needed for 80% power with no losses. A result with p >= 0.05 is reported as
+  "no difference detectable at this size", not as "the modes are equal".
+- **Cost cap:** Anthropic `--max-usd 0.15` (#41 cost US$0.058 for 72 conversations; this run is 72 as well), Voyage
+  `--max-usd 0.01` (query embeddings plus reranking of at most 10 passages per call). The run stops at a cap and reports
+  how far it got.
+- **Code (after approval, before the run, in its own commit):** `text_exp` gains a `--modes keyword,hybrid_rerank` option
+  that replaces the A/B conditions, the cache switch and the throttle. The code commit and the run commit are recorded;
+  the run needs a clean tree.
+- **Outputs:**
+  - the report `reports/text_exp_modes.md`, with rows in a JSON file;
+  - a blind review file;
+  - an MLflow run;
+  - this log, with the result whatever it is.
+
+  No held-out run, nothing on Neon, and the deployed demo is unchanged.
+
+---
+
+## 2026-11-13 — text_exp re-run, keyword vs hybrid_rerank: result
+
+Run as pre-registered on 2026-11-10 (code `3fd76c1`, model `claude-haiku-5-5`, local Postgres, agent cache off; report
+[reports/text_exp_modes.md](../reports/text_exp_modes.md), rows in `reports/text_exp_modes.json`).
+
+- **Technical repeat (reported, per the protocol):** the first attempt stopped after 12 of 36 questions when Docker Desktop
+  exited and closed the Postgres connection. It wrote no outputs; it cost US$0.0167. The whole run was repeated once from the
+  start, same commit and seed, with the Anthropic cap lowered to US$0.13 so the total stayed within the approved US$0.15.
+  The partial answers are not used. No API retries in the repeated run.
+- **Primary:** correct released answers 24/36 keyword vs 24/36 hybrid_rerank; only keyword correct 1 (`tr-148455-2017`),
+  only hybrid_rerank correct 1 (`tr-808475-2022`), exact McNemar p = 1.000. **No difference detectable at this size** (not
+  "equal"); the study was powered for about 8 net wins.
+- **Secondary:** wrong answers 0 and 0; declined 12 and 12; first drafts identical to released answers in both arms;
+  supported claims 24/24 in both; latency excluding Voyage waits, median / p95, keyword 4.4 / 6.4 s, hybrid_rerank
+  5.9 / 8.9 s (46.3 / 99.4 s unadjusted, free-tier Voyage throttle); cost Anthropic US$0.0297 keyword + US$0.0259
+  hybrid_rerank, Voyage US$0.0010 (83 calls). Total with the aborted attempt: about US$0.073.
+- **Context, not tested:** keyword re-measured today gives 24/36, the same count as #41 in October.
+- **Owner's blind review (2026-11-13):** all 24 automatic labels (all `declined`; no `wrong`) confirmed, so the result
+  stands as above. Marks and notes are in `docs/evals/text_modes_review.md`; unblinded afterwards from `review_key`.
+- **The two discordant pairs aren't retrieval differences:** in both, the losing arm called no tool at all. In
+  `tr-148455-2017` (Salah), hybrid_rerank refused the question as out of scope (R01). In `tr-808475-2022`, keyword asked
+  who "MT" is (R15), and the owner judged the item itself unusable as written. So the run shows no answer difference that
+  can be traced to the retrieval mode.
+- **Owner's notes, recorded as findings (no change made):**
+  - **Derivable answers declined:** a duration plus a signing date in the cited passage gives the year, but the agent
+    didn't derive it. This happened for Díaz (R07 keyword, R10 hybrid_rerank) and Ouattara (R05 keyword, R22
+    hybrid_rerank). R05 also says "late 2020s" where the passage gives 2030.
+  - **Stale Wikipedia:** Linthorst (R03, R11), so declining was right.
+  - **Retrieval recall:** Fischer's 2021 move is missing from the passages in both modes (R02, R08).
+  - **Answer quality:**
+    - R12 calls the 2026 revision "a 2023 edit", which is unsupported;
+    - R13 names a revision without a Sources block;
+    - R19 has a garbled sentence;
+    - R10's "central estimate, not a prediction" contradicts itself.
+- **Decision:** none needed; the M8 switching decision stands and keyword stays the default.
 
 ---
 
