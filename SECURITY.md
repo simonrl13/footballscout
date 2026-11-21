@@ -247,8 +247,19 @@ Bumped on 2026-11-07, the newest release at least two weeks old (no new packages
 | tornado (local, via jupyter) | 6.5.10 → 6.6 (2026-10-21) | 3. `notebooks/01_eda.ipynb` run on 6.6 |
 | mlflow, mlflow-skinny, mlflow-tracing (local, direct) | 3.16.1 → 3.17.2 (2026-10-21) | 3. **Migrates the tracking store:** see below |
 
-**Nothing open:** pyasn1 0.6.4 → 0.6.5 (via google-auth; 4 advisories; released 2026-10-27) was bumped on 2026-11-10, the
-first day the two-week rule allowed. Both audits run with no ignores.
+pyasn1 0.6.4 → 0.6.5 (via google-auth; 4 advisories; released 2026-10-27) was bumped on 2026-11-10, the first day the
+two-week rule allowed.
+
+Bumped on 2026-11-21 for advisories published 2026-11-12 and 2026-11-13 (the runtime set is unaffected):
+
+| Package (group, via) | From → to (released) | Advisories fixed |
+|---|---|---|
+| soupsieve (dev, via jupyter → nbconvert → beautifulsoup4) | 2.9.2 → 4.0.1 (2026-11-04, a major version; 4.1 was too new) | CVE-2026-126192, CVE-2026-126190 (ReDoS). Test suite and a `notebooks/01_eda.ipynb` render pass on 4.0.1 |
+| opentelemetry-api, -sdk 1.45.2, -semantic-conventions 0.66b2 (local, via mcp and mlflow) | 1.45.1 → 1.45.2 (2026-10-29) | CVE-2026-126360 (ReDoS in `traceparent` parsing). Tests, MCP server tool list and `import mlflow` pass |
+
+**Open, no ignore:** tornado 6.6 (local, via jupyter) has CVE-2026-126347 (open redirect), fixed in 6.6.1, released
+2026-11-09. Under the two-week rule the bump is due on **2026-11-23**. Until then the all-groups `pip-audit` (and so the
+`dependency-audit` check) stays red; the runtime audit is clean.
 
 **Migrating the MLflow tracking store to 3.17.2.** Schema `b7e2c1a4d9f3` → `dc11669786a5`: 6 new, empty tables; no table
 dropped; no existing row changed. Tested on 2026-11-07 on copies of the store (187 runs), which kept their rows and read and wrote

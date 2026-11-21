@@ -977,6 +977,20 @@ Merged with the owner's go-ahead (squash, no bypass), each after all required ch
 
 ---
 
+## 2026-11-21 — Dependency advisories: soupsieve and opentelemetry bumped, tornado due 2026-11-23
+
+New advisories, published 2026-11-12 and 2026-11-13, turned the all-groups `pip-audit` red on #75. None is in the API
+image's runtime set. The owner chose lockfile bumps over ignores and kept the two-week rule:
+
+- soupsieve 2.9.2 → 4.0.1 (CVE-2026-126192, CVE-2026-126190). 4.1 was 3 days old, so it was skipped.
+- opentelemetry-api 1.45.1 → 1.45.2 (CVE-2026-126360), with opentelemetry-sdk 1.45.2 and semantic-conventions 0.66b2.
+- **tornado 6.6 → 6.6.1 (CVE-2026-126347) is due on 2026-11-23**, when 6.6.1 becomes allowed (released 2026-11-09).
+  `dependency-audit` stays red until then, so no PR can merge before it. No ignore was added.
+
+Details are in SECURITY.md (Dependency exceptions).
+
+---
+
 ## Paper notes
 
 ### Candidate contributions
