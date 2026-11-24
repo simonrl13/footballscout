@@ -79,8 +79,9 @@ Key modules: `scout/data/snapshots.py` (population, club at t, target), `scout/m
 - No secrets in code, logs, prompts or git; `.env` only. Never read `.env` files.
 - Ask before adding any dependency or external service. Before installing a package, verify it on the official registry (age, downloads, maintainer). Commit lockfiles.
 - Every change must pass the security gates (tests, gitleaks, pip-audit, CodeQL) before merge.
-- Never bypass pre-commit hooks or CI checks (no `--no-verify`, no `core.hooksPath` override, no skipped or
-  ignored checks). If a hook or check fails, stop and report it.
+- Never bypass pre-commit hooks or CI checks: no `--no-verify` or `-n`, no `core.hooksPath`
+  override, no `SKIP=…` or `HUSKY=0`, no editing or disabling CI workflows or required checks to get a change through,
+  no skipped or ignored checks. If a hook or check fails, stop and report it.
 - Update SECURITY.md whenever the attack surface changes (new endpoint, tool, or data source).
 
 ## General
