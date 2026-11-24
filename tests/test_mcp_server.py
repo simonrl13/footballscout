@@ -15,7 +15,7 @@ def run(coro):
     return asyncio.run(coro)
 
 
-def test_same_four_tools_all_read_only_with_limits_in_the_schema():
+def test_same_tools_as_the_agent_all_read_only_with_limits_in_the_schema():
     listed = {t.name: t for t in run(server.list_tools())}
     assert set(listed) == set(tools.TOOLS)
     assert all(t.annotations.read_only_hint and not t.annotations.destructive_hint for t in listed.values())

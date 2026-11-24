@@ -25,7 +25,7 @@ The demo runs until 1 January 2027. After that, see the walkthrough video.
 - [x] **M4a** — tools API + Claude agent (no text yet): 4 read-only tools, number check with retry/block, US$2/day spend cap, per-call traces. See [Agent](#agent-m4a-m4b).
 - [x] **M5a** — MCP server (stdio, same 5 read-only tools) + 30-question text-free eval set with deterministic checks; CI replays a 13-case recorded subset without an API key. See [Evals and MCP (M5a)](#evals-and-mcp-m5a).
 - [x] **M4b (text, no extraction)** — `search_text` over the demo players' Wikipedia pages (Postgres full-text search), every answer citing the exact revision with the CC BY-SA notice; agent on Claude Haiku 5.5; tracing dashboard and prompt caching (M6 pieces). See [Agent](#agent-m4a-m4b).
-- [ ] LLM judge · rate limits (M6) · M7 — AWS deploy
+- [ ] LLM judge (M6) · M7 — AWS deploy. Rate limits (M6) are on in the public demo: see [Live demo](#live-demo).
 - [x] **M8** — keyword vs vector vs hybrid retrieval, pre-registered: switching rule not met, keyword stays the default. See [Retrieval](#retrieval-keyword-vs-hybrid-m8).
 
 ## Problem (from the SPEC)
@@ -92,7 +92,8 @@ A Claude tool-calling agent over five read-only tools, also exposed as REST endp
 - **Observability:** one `agent_calls` row per model call (tokens, cost, latency, requested tools, cache hits). `python -m scout.agent.dashboard` shows cost per day and per conversation, prompt-cache hit rate, p50/p95 latency and violations (views in `db/agent.sql`). `AGENT_CACHE=true` serves identical requests from `agent_cache` (development and evals). Production latency is reported cold vs warm ([reports/m7_latency.md](reports/m7_latency.md)): the first request after the demo has been idle takes about 19 s (the container starting; one sample, accepted rather than paying for an always-on instance); warm median 6.6 s (n = 5), model calls about 82% of it.
 - **Prompt caching:** automatic caching on every request (tools, system prompt, history). On Haiku 5.5 the dev eval run read 158,833 tokens from the cache against 262 uncached input tokens.
 - **Model:** `AGENT_MODEL` / `AGENT_EFFORT` from `.env`: `claude-haiku-5-5` at effort `medium` since 2026-10-12 (about 8x cheaper per question than Haiku 4.5 with the same dev-set result; see the research log).
-- **Not yet:** rate limits (M6), an LLM judge. The held-out eval has run: 19/20 ([reports/evals_heldout.md](reports/evals_heldout.md)).
+- **Rate limits (public demo):** per client IP, `/ask` allows 5 questions per minute and 20 per UTC day (429 with `Retry-After` past either), counted in Postgres by `scout_tracer` with only a keyed hash of the IP stored ([scout/api/limits.py](scout/api/limits.py), [tests/test_limits.py](tests/test_limits.py)). On when `PUBLIC_DEMO=true`, as in the deploy.
+- **Not yet:** an LLM judge. The held-out eval has run: 19/20 ([reports/evals_heldout.md](reports/evals_heldout.md)).
 
 ## Evals and MCP (M5a)
 - **MCP server** ([scout/mcp_server.py](scout/mcp_server.py)): the same five tools over stdio, annotated read-only, arguments validated against the same Pydantic limits before any query. Try it with `npx @modelcontextprotocol/inspector uv run --env-file .env python -m scout.mcp_server`.
