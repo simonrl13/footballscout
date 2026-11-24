@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "23 6 * * 1"  # weekly on main (Mondays 06:23 UTC): new advisories show up between PRs (SECURITY.md)
 
 permissions:
   contents: read
