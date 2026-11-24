@@ -247,8 +247,19 @@ Bumped on 2026-11-07, the newest release at least two weeks old (no new packages
 | tornado (local, via jupyter) | 6.5.10 → 6.6 (2026-10-21) | 3. `notebooks/01_eda.ipynb` run on 6.6 |
 | mlflow, mlflow-skinny, mlflow-tracing (local, direct) | 3.16.1 → 3.17.2 (2026-10-21) | 3. **Migrates the tracking store:** see below |
 
-**Nothing open:** pyasn1 0.6.4 → 0.6.5 (via google-auth; 4 advisories; released 2026-10-27) was bumped on 2026-11-10, the
-first day the two-week rule allowed. Both audits run with no ignores.
+pyasn1 0.6.4 → 0.6.5 (via google-auth; 4 advisories; released 2026-10-27) was bumped on 2026-11-10, the first day the
+two-week rule allowed.
+
+Bumped on 2026-11-21 for advisories published 2026-11-12 and 2026-11-13 (the runtime set is unaffected):
+
+| Package (group, via) | From → to (released) | Advisories fixed |
+|---|---|---|
+| soupsieve (dev, via jupyter → nbconvert → beautifulsoup4) | 2.9.2 → 4.0.1 (2026-11-04, a major version; 4.1 was too new) | CVE-2026-126192, CVE-2026-126190 (ReDoS). Test suite and a `notebooks/01_eda.ipynb` render pass on 4.0.1 |
+| opentelemetry-api, -sdk 1.45.2, -semantic-conventions 0.66b2 (local, via mcp and mlflow) | 1.45.1 → 1.45.2 (2026-10-29) | CVE-2026-126360 (ReDoS in `traceparent` parsing). Tests, MCP server tool list and `import mlflow` pass |
+
+tornado 6.6 → 6.6.1 (local, via jupyter; CVE-2026-126347, open redirect; released 2026-11-09) was bumped on 2026-11-24,
+once the two-week rule allowed it (2026-11-23). It is the only lockfile change; `pip-audit` is clean on the runtime set and
+on all groups.
 
 **Migrating the MLflow tracking store to 3.17.2.** Schema `b7e2c1a4d9f3` → `dc11669786a5`: 6 new, empty tables; no table
 dropped; no existing row changed. Tested on 2026-11-07 on copies of the store (187 runs), which kept their rows and read and wrote
@@ -290,4 +301,14 @@ Bumped instead (fix older than two weeks): aiohttp 3.14.3 → 3.14.4 (8 advisori
   measured with live calls before adoption. The prompt is unchanged.
 - The dev and held-out `quote` grader still ignores signs (kept on purpose: it backs the approved thresholds); the production check above is where direction is enforced.
 - The number check allows a number if some source number rounds to it, so small derived integers ("under 19" from an age of 18.8) can pass. Evals with an LLM judge (M5) cover derived claims.
+- **GitHub secret scanning and push protection are off** on this public repository (found 2026-11-10). Secrets are caught
+  by gitleaks in pre-commit and in CI, but a local hook can be skipped, and push protection would block a secret on
+  GitHub's side before it lands. Enabling it is a repository setting, free for public repositories.
+- **Dependabot alerts are off** (found 2026-11-10). New advisories against `main` don't raise an alert. Mitigated since
+  2026-11-13 by a weekly scheduled run of CI on `main`, which includes both `pip-audit` sets (Mondays). A failure emails the
+  owner. GitHub disables scheduled workflows after 60 days without repository activity, so the weekly run stops when
+  the project goes quiet.
+- **25 open CodeQL alerts** (2026-11-10): all code-quality warnings or notes (implicit string concatenation, mixed
+  returns, unused imports and similar), none with a security severity. The merge ruleset blocks high or higher only,
+  so they don't block merges, but they could hide a new, real alert.
 - The rest is completed in M6.
