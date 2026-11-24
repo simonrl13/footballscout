@@ -1057,6 +1057,28 @@ download or dependency install. Full text: [docs/FINETUNE_PLAN.md](FINETUNE_PLAN
 - **Known limitation:** `extract-v3` was developed on Claude, so B may be understated by a prompt written for
   another model.
 
+## 2026-11-24 — SMOKE TEST (not a result): base model memory on the RTX 3050
+
+This is a memory check only. The output wasn't kept or scored, and no sampled document was used.
+
+- **Run:** commit 54864fb, `python -m scout.finetune.infer --smoke`, model revision `cdbee75f…`, NF4 with bf16
+  compute, `BNB_CUDA_VERSION` unset (bitsandbytes loads its CUDA 13.2 build), greedy, `max_new_tokens=2048`.
+- **Documents:** all from outside the test, dev and train sets and their players.
+  - **Target:** `wikipedia:enwiki:diff:911707274:975823253`. Its stored Claude input count is 5,198 tokens, against
+    5,209 for the longest test document.
+  - **Shots:** 3 stand-in documents at the dev median of 1,565 Claude tokens. Their event lists are empty, because no
+    hand labels exist yet and Claude outputs can't be examples.
+- **Prompt:** 4,905 Qwen tokens: system with schema 553, target 3,044, the shots about 420 each. Claude's counts are
+  larger because they include the structured-output schema overhead and a different tokenizer.
+- **Result:** completed in 6.4 s. Free VRAM at start was 5.05 GiB; the peak was 3.70 GiB allocated and 3.96 GiB
+  reserved. No out-of-memory error.
+- **Caveats:**
+  - The model returned 6 tokens. It copied the empty pattern of the stand-in shots, so long outputs weren't
+    exercised. At about 0.15 MB of KV cache per token in bf16, 2,048 output tokens would add about 0.3 GiB.
+  - The pre-registered shots are drawn from dev documents with at least one labelled event, with no length cap. The
+    longest dev document is 11,577 Claude tokens, so an unlucky draw could make the prompt about three times this
+    one, and it could run out of memory. If it does, it is reported and logged as a deviation, as pre-registered.
+
 ---
 
 ## Paper notes
