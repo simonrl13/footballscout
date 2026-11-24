@@ -12,3 +12,6 @@ mlartifacts/
 mlruns/
 data/demo/
 .venv-*/
+labeling/finetune/
+data/finetune/
+*.safetensors

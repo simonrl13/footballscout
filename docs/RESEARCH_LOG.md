@@ -975,6 +975,49 @@ Merged with the owner's go-ahead (squash, no bypass), each after all required ch
   permission rules (since moved to `settings.local.json`). No code was uncommitted; the deployed code is the merge
   commit named in each report.
 
+## 2026-11-24 — PRE-REGISTRATION: small open model for Wikipedia event extraction (staged)
+
+Full plan: [docs/FINETUNE_PLAN.md](FINETUNE_PLAN.md) (§3 sampling, §4 evaluation and decision rule). This entry
+fixes it before any label, score or model download exists.
+
+- **Goal: local extraction with no API dependency.** Can a 1–4B open model (Qwen3-4B-Instruct-2507, pinned at
+  commit `cdbee75f17c0…`) run `extract-v3` on this machine at quality close to Claude's?
+  - It is not a cost experiment: the whole corpus already cost US$2.77.
+  - It can't move a shipped number: the text features were a pre-registered negative result (2026-10-12).
+- **Terms.** The Anthropic Usage Policy bars using outputs to train a model without prior authorization. So Claude's
+  stored outputs are used only as system C in the evaluation. Training and few-shot examples come from the owner's
+  hand labels. No authorization is requested.
+- **Sets** (drawn 2026-11-24 by `scout.finetune.sample`, in `docs/evals/finetune_sample.csv`):
+  - test 150, dev 30, train 150;
+  - split by a hash of the player ID, so a page never lands in two sets;
+  - 5 keyword strata (injury, contract, loan, transfer, none), 30 per stratum (6 for dev);
+  - 24,093 candidates, excluding the 167 documents a pilot had already extracted.
+- **Staged.** The owner labels test and dev first (guide: `docs/evals/finetune_labelling.md`). Then:
+  - C is scored from the stored outputs;
+  - B is the base model: zero-shot vs 3-shot (shots drawn from dev), chosen on the other 27 dev documents;
+  - both are scored once on test.
+
+  The owner then decides whether to label the train set and run one QLoRA training (F). F's hyperparameters are
+  fixed in §6, and dev picks only its epoch.
+- **Primary metric:** kept-event micro-F1 against the hand labels, gold filtered by the same window and date rules.
+  Matching: same type, date at the gold precision, and overlapping evidence or the same line. Paired bootstrap with
+  10,000 resamples, seed 20261124.
+- **Decision rule** (B at stage 3, F if trained). It replaces C only if all five hold:
+  1. F1 at least C's minus 3 points, with the paired 95% interval's lower bound at least −6;
+  2. quote pass rate at least 98%;
+  3. invalid JSON at most 1% of documents;
+  4. every type with at least 25 gold kept events at least C's F1 minus 10 points;
+  5. p95 latency at most 10 s per document.
+
+  Otherwise Claude stays.
+- **Claude latency:** 150 serial live calls on the test documents (about US$0.04, approved). Only their latency is
+  used.
+- **Known threats:**
+  - one labeller, with a 10% second pass;
+  - pretraining exposure to Wikipedia;
+  - looking at B's test result before deciding whether F exists.
+- **Every run is recorded here, failed ones included.**
+
 ---
 
 ## Paper notes

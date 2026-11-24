@@ -1,19 +1,27 @@
 # Fine-tuning experiment: a small open model for Wikipedia event extraction
 
-Stage 0, plan only, 2026-11-24. Nothing has been installed, downloaded or spent. Every stage below waits for the
-owner's approval, and so does each new dependency.
+Plan written 2026-11-24 (stage 0) and approved the same day with these decisions:
+- **Staged.** The test set (150) and dev set (30) are labelled first. Claude (C) and the base model (B) are compared on
+  them. Whether to label the train set and train at all is decided only after the owner sees that result.
+- **Sizes:** 150 / 150 / 30 (test / train / dev).
+- **Terms:** hand labels only. No authorization request to Anthropic.
+- **Claude latency:** the ~US$0.04 of live calls on the 150 test documents is approved.
+- **Goal:** local extraction with no API dependency. It is not cost savings.
 
-**Question.** Can a small open model (1–4B parameters), fine-tuned with QLoRA, match Claude on Scout's Wikipedia
-event extraction (`extract-v3`), as measured against hand labels? "Claude stays" is an acceptable answer.
+Nothing has been installed or downloaded yet, and each new dependency still needs the owner's approval.
+
+**Question.** Can a small open model (1–4B parameters) run Scout's Wikipedia event extraction (`extract-v3`) locally,
+with no API dependency, at quality close to Claude's, as measured against hand labels? The model is tried first as
+is (B), and fine-tuned with QLoRA (F) only if the owner decides so after B. "Claude stays" is an acceptable answer.
 
 **What the result can and can't change.** Two facts from the audit (§1) frame the experiment:
 - **It can't save meaningful money.** The full corpus is already extracted, for US$2.77.
 - **It can't change a shipped metric.** The features built from the extraction were a pre-registered negative result
   (B0 stays the baseline, 2026-10-12), and nothing in the demo uses them.
 
-So the experiment measures quality, reliability, cost and latency. If the small model matches Claude, that shows an
-extraction step like this can run locally with no API dependency and no per-document cost. That is the claim on
-offer, and it is the only one.
+So the goal is **local extraction with no API dependency**. The experiment measures quality, reliability and
+latency, and reports cost only for completeness. If the small model is close enough to Claude, that shows an
+extraction step like this can run on local hardware. That is the claim on offer, and it is the only one.
 
 ## 1. Data audit (local Postgres, 2026-11-24)
 
@@ -148,16 +156,21 @@ type is filled first.
 
 | Set | Documents | Allocation | Purpose |
 |---|---|---|---|
-| **Test** | **250** | 50 each from injury, contract, loan, transfer, none | Ground truth for every comparison |
-| Train | 250 | Same strata | QLoRA training; few-shot examples |
-| Dev | 50 | Same strata | Training stopping point and prompt format; never used for the decision |
+| **Test** | **150** | 30 each from injury, contract, loan, transfer, none | Ground truth for every comparison |
+| Dev | 30 | 6 per stratum | B's few-shot examples and variant choice; F's epoch; never used for the decision |
+| Train | 150 | 30 per stratum | QLoRA training; labelled only if the owner decides to train after B |
+
+**Drawn 2026-11-24** with `python -m scout.finetune.sample`. The sets are in `docs/evals/finetune_sample.csv`
+(document and player IDs only, no text). There were 24,093 candidates: the 24,260 `extract-v3` documents minus the
+167 that a pilot had already extracted. The script refuses to redraw once the file exists.
 
 **Sizes and effort:**
-- **Size estimate:** from Claude's kept rate, 250 test documents should hold about 120–200 kept gold events. That's
-  enough for ±6–8 point F1 intervals on the main types; injury and contract_expiry will be thin.
-- **Labelling time:** at a median of about 800 words per document, budget about 5 minutes each, or roughly 21 h for
-  the test set. The test set alone is enough to compare Claude with the base model.
-- **Smaller option:** 150 / 150 / 30 documents, about 27 h in total. Intervals widen to about ±9 points.
+- **Size estimate:** 150 test documents should hold about 70–120 kept gold events. Main-type F1 intervals will be
+  about ±9 points; injury and contract_expiry will be thin.
+- **Labelling time,** measured on the drawn sets: the test documents total about 36,000 words (median 120 words, longest
+  about 2,000), and the dev documents about 15,000 (median 270). The §1 token counts are larger because they include
+  the system prompt and the output schema. At about 4 minutes per document, that is
+  roughly **10 h for test and 2 h for dev**. If training goes ahead, the train set adds about 10 h.
 
 **Labelling guide** (`docs/evals/finetune_labelling.md`, written in stage 1). It follows the extraction prompt's own
 rules, so the gold set and the systems answer the same question:
@@ -192,15 +205,25 @@ rules, so the gold set and the systems answer the same question:
 
 ## 4. Pre-registered evaluation
 
-This section is fixed before any training run. It is copied into `docs/RESEARCH_LOG.md` as a PRE-REGISTRATION entry
-and committed before any training.
+This section is fixed before any labels exist. It was copied into `docs/RESEARCH_LOG.md` as a PRE-REGISTRATION
+entry (2026-11-24) and committed before any labelling, scoring or model download.
 
 **Systems,** all given the same input (system prompt, `Player: …`, `<text>…</text>`):
 - **C (Claude):** the stored `extract-v3` outputs. No new calls are needed to score quality.
-- **B (base model):** the small model with no fine-tuning. Two variants: zero-shot with the `extract-v3` prompt, and
-  3-shot with examples from the train split. The better of the two on dev is the one reported. Decoding is greedy,
-  without constrained decoding. JSON validity is a measured outcome, so the model gets no help with it.
-- **F (fine-tuned):** QLoRA on the train split, with the same prompt and greedy decoding.
+- **B (base model):** the small model with no fine-tuning, in two variants:
+  - zero-shot with the `extract-v3` prompt;
+  - 3-shot, with 3 dev documents and their hand labels as examples. The 3 documents are drawn with seed 20261124 from
+    the dev documents that have at least one labelled event.
+
+  The variant with the higher kept-event F1 on the other 27 dev documents is the one scored on test. Ties go to
+  zero-shot. Decoding is greedy, without constrained decoding. JSON validity is a measured outcome, so the model gets
+  no help with it. (The plan first took the shots from the train split. That split isn't labelled in the staged
+  plan.)
+- **F (fine-tuned), only if the owner decides to train after seeing B:** QLoRA on the train split, with the same
+  prompt and greedy decoding.
+- **Prompt for B and F:** the `extract-v3` system prompt, followed by a fixed paragraph that gives the JSON `SCHEMA`
+  as text. Claude received the schema through structured outputs, so without the paragraph the open model wouldn't
+  see the format at all.
 
 Every system's output goes through the unchanged `verify_events` and `contract_statements` functions.
 
@@ -211,7 +234,7 @@ Every system's output goes through the unchanged `verify_events` and `contract_s
 
 Matching is one-to-one and greedy, in document order.
 
-**Metrics,** all on the 250 test documents:
+**Metrics,** all on the 150 test documents:
 
 | Metric | Definition | Level |
 |---|---|---|
@@ -226,8 +249,9 @@ Matching is one-to-one and greedy, in document order.
 
 - **Intervals:** 95% intervals come from a paired bootstrap over documents (10,000 resamples, seed 20261124).
 - **Claude's latency:** the stored outputs came from the Batch API, so they have no per-request latency. Live
-  latency would need about 250 non-batch calls, roughly US$0.06, and runs only if the owner approves that spend.
-  Otherwise Claude's latency is reported as "Batch API, not measured".
+  latency comes from 150 non-batch calls on the test documents (about US$0.03–0.04; owner approved up to US$0.06 on
+  2026-11-24). They run serially, with the same model, effort and request as `extract-v3`. Only their latency is
+  used, not their outputs, so C's quality is still the stored run's.
 
 **Decision rule.** F replaces C as the recommended extractor only if all five conditions hold:
 1. **F1 close to Claude's:** F's kept-event micro-F1 is at least C's minus 3 points, and the lower bound of the paired
@@ -239,8 +263,17 @@ Matching is one-to-one and greedy, in document order.
 5. **Fast enough:** p95 latency for F is at most 10 s per document on the hardware used. (The extraction is a batch
    job, so speed is a sanity bound, not a goal.)
 
-Otherwise **Claude stays**. B is reported against the same rule for context. If B passes without fine-tuning, that is
-reported as the finding.
+Otherwise **Claude stays**.
+
+**Staged use of the rule:**
+- **Stage 3:** B is scored on test and checked against the same five conditions, with B in place of F.
+- **If B passes,** that is the finding, and no training is needed.
+- **If B fails,** the owner decides whether to label the train set and run F. F is then scored on the same test
+  set.
+
+Seeing B's test result before deciding to train is a known look at the test set. It can change only whether F
+exists, not how F is built: F's hyperparameters, prompt and epoch rule are fixed above. It is reported with the
+result.
 
 **Fixed in advance:**
 - **One training run counts.** The hyperparameters in §6 are fixed. Dev may pick the epoch checkpoint (1, 2 or 3), and
@@ -305,9 +338,10 @@ The weights are pinned to the commit SHA at download: `cdbee75f17c0…` for Qwen
 
 | Step | RTX 3050 (local) | T4 (Kaggle) |
 |---|---|---|
-| Training: 250 documents × ~1.5k tokens × 3 epochs ≈ 1.1M tokens | 1–2 h | 30–45 min |
-| Inference, B and F on 250 test + 50 dev documents (~150 output tokens each) | 1–1.5 h per system | 30–45 min per system |
-| Total GPU time | about 4–5 h | about 2–3 h |
+| B inference, two variants on 30 dev documents, then the chosen one on 150 test (4-bit) | about 1 h | 20–30 min |
+| Only if training goes ahead: 150 documents × ~1.3k tokens × 3 epochs ≈ 0.6M tokens | about 1 h | 20–30 min |
+| Only if training goes ahead: F inference on 30 dev × 3 checkpoints + 150 test | about 1 h | 20–30 min |
+| Total GPU time | about 1 h for B; about 3 h with F | about 1–1.5 h |
 
 ## 7. Dependency vetting
 
@@ -387,13 +421,14 @@ reported.
 
 | Stage | What | Owner's time | My time | Gate |
 |---|---|---|---|---|
-| 0 | This plan | Review | done | **Approve plan, labelling size, terms fallback** |
-| 1 | `scout/finetune/sample.py` and `labels.py`, labelling guide, sampled test and train IDs committed; no new dependencies | — | ~half a day | Owner OK to start labelling |
-| 2 | Hand labelling: test 250 (~21 h), then train 250 + dev 50 (~25 h); 10% second pass | **~46 h** (smaller option: ~27 h) | ~1 h | Labels done |
-| 3 | Pre-registration committed; `score.py` with tests; score C on test (no API calls) | Review | ~half a day | Owner OK; Claude live-latency spend (~US$0.06) yes or no |
-| 4 | Dependencies installed (each approved), weights downloaded, smoke run, training, B and F inference | — | ~1 day, including 4–5 GPU hours | Each dependency; compute choice |
+| 0 | This plan | Review | done | Approved 2026-11-24 (staged, 150 / 150 / 30, hand labels only, latency spend) |
+| 1 | `scout/finetune/sample.py` and `labels.py` with tests, labelling guide, the three sets drawn and committed, test and dev sheets rendered, pre-registration in the research log. No new dependencies | — | done 2026-11-24 | Owner OK to start labelling |
+| 2a | Hand labelling: test 150 and dev 30; 10% second pass on test | **about 12 h** | ~1 h | Labels done |
+| 3 | `score.py` with tests; score C (no API calls); Claude live latency (~US$0.04); install the inference dependencies (each approved: torch, transformers, accelerate, bitsandbytes, plus the transitive safetensors, tokenizers and huggingface-hub); download Qwen3-4B at the pinned SHA; B on dev, then on test | Review | ~1 day, including about 1 GPU hour | Each dependency; compute choice |
+| — | **Owner decides: stop here, or train** | Decision | — | Owner |
+| 2b | Only if training: hand-label the train set (150) | about 10 h | ~1 h | Labels done |
+| 4 | Only if training: install peft and trl (each approved; datasets only if needed); smoke run; training; F on dev and test | — | ~1 day, including about 2 GPU hours | Each dependency |
 | 5 | Report, research-log result, SECURITY.md; PR for the owner to merge | Review | ~half a day | Owner merges |
 
-**Total: about 3 working days of my time plus 4–5 GPU hours, and about 46 h of the owner's labelling (27 h with the
-smaller sets).** Labelling is the bottleneck. The test set is labelled first, so stage 3 can score Claude and the base
-model before the train set exists. If the base model is already within the rule, the train set may not be needed.
+**Total, staged.** To the decision point: about 12 h of the owner's labelling, about 1.5 days of my time and about
+1 GPU hour. If training goes ahead: another 10 h of labelling, about 1.5 days of my time and about 2 GPU hours.
