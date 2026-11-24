@@ -167,10 +167,11 @@ type is filled first.
 **Sizes and effort:**
 - **Size estimate:** 150 test documents should hold about 70–120 kept gold events. Main-type F1 intervals will be
   about ±9 points; injury and contract_expiry will be thin.
-- **Labelling time,** measured on the drawn sets: the test documents total about 36,000 words (median 120 words, longest
+- **Labelling time,** measured on the drawn sets, is **about 12 h for test and dev**, plus **about 10 h for train only
+  if training goes ahead**. The basis: the test documents total about 36,000 words (median 120 words, longest
   about 2,000), and the dev documents about 15,000 (median 270). The §1 token counts are larger because they include
   the system prompt and the output schema. At about 4 minutes per document, that is
-  roughly **10 h for test and 2 h for dev**. If training goes ahead, the train set adds about 10 h.
+  roughly 10 h for test and 2 h for dev.
 
 **Labelling guide** (`docs/evals/finetune_labelling.md`, written in stage 1). It follows the extraction prompt's own
 rules, so the gold set and the systems answer the same question:
@@ -227,6 +228,32 @@ entry (2026-11-24) and committed before any labelling, scoring or model download
 
 Every system's output goes through the unchanged `verify_events` and `contract_statements` functions.
 
+**Inference settings for B (and F), fixed before any run (amendment 2026-11-24):**
+- **Weights:** `Qwen/Qwen3-4B-Instruct-2507` at revision `cdbee75f17c01a7cc42f958dc650907174af0554`, loaded with
+  `use_safetensors=True` and `trust_remote_code=False`. The repository has three safetensors shards, 8.04 GB in all,
+  and is Apache-2.0, not gated.
+- **Precision:** 4-bit NF4 via bitsandbytes, with bf16 compute and no double quantization. This runs on the owner's
+  RTX 3050: desktop, 6 GB VRAM, 70 W, driver 616.92 with CUDA 13.4.
+- **Decoding:** unconstrained. transformers 5.22.2 has no JSON-schema-constrained decoding without a new dependency
+  such as outlines or xgrammar. Its `generate` has no grammar option, and `response_format` appears in the serving
+  code only in a list of parameter names, not in any decoding logic.
+
+  Generation is greedy (`do_sample=False`), one document at a time, with `max_new_tokens=2048` and the model's own
+  chat template (system prompt, then the user turn in `extract-v3`'s format).
+- **Parsing:** strip surrounding whitespace and at most one enclosing Markdown code fence, then `json.loads`. Then
+  check the result against `SCHEMA`: required keys present, field types right, `type` in the enum.
+- **A failed extraction** is output that doesn't parse, fails the `SCHEMA` check, or stops at `max_new_tokens`. It
+  counts as zero events for that document: every gold event in it is a false negative, and the document counts
+  toward the invalid-JSON rate. There is no retry and no repair.
+
+  The same applies to C: a stored `extract-v3` result with status `refusal` or `max_tokens` is a failed extraction.
+- **Latency:** wall-clock time per document, from tokenization through `generate`. One warm-up document is run first
+  and excluded.
+- **Out of memory and other deviations:** an out-of-memory error stops the run, and it is reported. Any change to
+  precision, length limits or hardware is logged in the research log as a deviation before the re-run. Moving to
+  Kaggle counts as a hardware change. None of these are switched silently.
+- **No prompt tuning for Qwen.** B and F get exactly the `extract-v3` system prompt plus the fixed schema paragraph.
+
 **Matching.** A system event matches a gold event when:
 - the `type` is the same;
 - the `date` agrees at the gold precision;
@@ -265,11 +292,27 @@ Matching is one-to-one and greedy, in document order.
 
 Otherwise **Claude stays**.
 
+**How condition 1 is judged at n = 150.** The test set is resampled by document, 10,000 times with seed 20261124.
+Each resample recomputes both systems' micro-F1 from pooled counts on the same documents, and the 2.5th and 97.5th
+percentiles of the difference form the paired 95% interval. Condition 1 needs two things:
+- the point estimate of the difference is at least −3 points;
+- the interval's lower bound is at least −6 points.
+
+If the interval is too wide to clear −6, condition 1 fails. That is reported as "closeness not shown", not as "the
+model is worse".
+
 **Staged use of the rule:**
 - **Stage 3:** B is scored on test and checked against the same five conditions, with B in place of F.
-- **If B passes,** that is the finding, and no training is needed.
-- **If B fails,** the owner decides whether to label the train set and run F. F is then scored on the same test
-  set.
+- **If B passes all five,** training stops there. The finding is that the base model is enough, and the train set
+  isn't labelled.
+- **If B fails and its kept-event F1 is no more than 30 points below C's,** training is recommended. The owner labels
+  the train set and runs F, which is then scored on the same test set. Failures of the JSON, quote or latency
+  conditions alone also recommend training, since fine-tuning targets output format directly.
+- **If B's kept-event F1 is more than 30 points below C's,** training is not recommended. 150 examples are unlikely
+  to close a gap that size, so the experiment stops and reports B.
+
+The 30-point line is a judgement fixed in advance, not a derived threshold. The owner can always decline the train
+labelling for time, and that is recorded as the reason F doesn't exist.
 
 Seeing B's test result before deciding to train is a known look at the test set. It can change only whether F
 exists, not how F is built: F's hyperparameters, prompt and epoch rule are fixed above. It is reported with the
@@ -285,6 +328,9 @@ result.
 - **The model may already know the events.** Wikipedia is in the base models' pretraining data. The verbatim-quote
   and year rules limit what that can do.
 - **Claude's prompt was tuned on pilot documents.** Those 200 pilot documents are excluded from the test sample.
+- **`extract-v3` was developed on Claude** (two pilots, then the full run). The prompt was never tuned for Qwen, and
+  won't be, so B is measured with a prompt written for another model. This may understate what a small model could
+  do with its own prompt. It is a known limitation, reported with the result.
 - **One labeller.** The 10% second pass is the only check on the owner's labels.
 
 ## 5. Model shortlist

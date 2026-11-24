@@ -1018,6 +1018,45 @@ fixes it before any label, score or model download exists.
   - looking at B's test result before deciding whether F exists.
 - **Every run is recorded here, failed ones included.**
 
+## 2026-11-24 — AMENDMENT 1 to the extraction pre-registration (before any label, score or download)
+
+This entry is written after the pre-registration entry above (commit 3297c14) and before any label, score, model
+download or dependency install. Full text: [docs/FINETUNE_PLAN.md](FINETUNE_PLAN.md) §4.
+
+- **Few-shot examples come from dev, not train.** The original plan took them from train. Train isn't labelled in
+  the staged plan.
+  - The 3 example documents are drawn with seed 20261124 from dev documents that have at least one labelled event.
+  - The zero-shot vs 3-shot choice is made on the other 27 dev documents by kept-event F1. Ties go to zero-shot.
+  - 3-shot stays a candidate, because the owner labels dev.
+- **Schema in the prompt.** B and F get the `extract-v3` system prompt plus one fixed paragraph that gives `SCHEMA` as
+  text. Claude received the schema through structured outputs. The prompt isn't tuned for Qwen.
+- **Unconstrained decoding.** transformers 5.22.2 has no JSON-schema-constrained decoding without a new dependency,
+  so B and F run unconstrained. Greedy decoding, batch 1, `max_new_tokens=2048`, the model's chat template.
+- **Unparseable output is a failed extraction.** That covers output that doesn't parse after stripping whitespace and
+  one code fence, fails the `SCHEMA` check, or stops at `max_new_tokens`.
+  - It counts as zero events, so its gold events are false negatives. It counts toward the invalid-JSON rate.
+  - No retry and no repair.
+  - The same applies to C's stored results with status `refusal` or `max_tokens`.
+- **Precision and hardware.** The model is `Qwen/Qwen3-4B-Instruct-2507` at revision
+  `cdbee75f17c01a7cc42f958dc650907174af0554`, loaded with `use_safetensors=True` and `trust_remote_code=False`.
+  - It runs in 4-bit NF4 via bitsandbytes, with bf16 compute and no double quantization.
+  - The hardware is the owner's RTX 3050: desktop, 6 GB VRAM, 70 W.
+  - An out-of-memory error stops the run and is reported. Any change to precision, length limits or hardware is
+    logged here as a deviation before a re-run; Kaggle counts as a hardware change.
+- **How the ±3-point rule is judged at n = 150.** A paired bootstrap over the test documents (10,000 resamples, seed
+  20261124) recomputes both systems' micro-F1 on each resample, and the 2.5th and 97.5th percentiles of the
+  difference form the interval.
+  - Condition 1 passes only if the point estimate is at least −3 points and the lower bound is at least −6.
+  - A lower bound under −6 because the interval is wide counts as a fail, reported as "closeness not shown".
+- **What B's result means for training:**
+  - **B passes all five conditions:** stop. The base model is enough, and train isn't labelled.
+  - **B fails, with kept-event F1 no more than 30 points below C's:** training is recommended, including when only
+    the JSON, quote or latency conditions fail.
+  - **B's F1 is more than 30 points below C's:** training is not recommended; stop and report B.
+  - The owner may always decline the train labelling for time, and that reason is recorded.
+- **Known limitation:** `extract-v3` was developed on Claude, so B may be understated by a prompt written for
+  another model.
+
 ---
 
 ## Paper notes
