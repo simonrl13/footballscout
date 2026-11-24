@@ -989,6 +989,11 @@ image's runtime set. The owner chose lockfile bumps over ignores and kept the tw
 
 Details are in SECURITY.md (Dependency exceptions).
 
+## 2026-11-24 — tornado 6.6.1
+
+tornado 6.6 → 6.6.1 (CVE-2026-126347), due under the two-week rule since 2026-11-23 (released 2026-11-09). Only tornado
+changed in `uv.lock`; `pip-audit` is clean on the runtime set and on all groups, so `dependency-audit` can go green.
+
 ---
 
 ## Paper notes

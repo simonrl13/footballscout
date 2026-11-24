@@ -257,9 +257,9 @@ Bumped on 2026-11-21 for advisories published 2026-11-12 and 2026-11-13 (the run
 | soupsieve (dev, via jupyter → nbconvert → beautifulsoup4) | 2.9.2 → 4.0.1 (2026-11-04, a major version; 4.1 was too new) | CVE-2026-126192, CVE-2026-126190 (ReDoS). Test suite and a `notebooks/01_eda.ipynb` render pass on 4.0.1 |
 | opentelemetry-api, -sdk 1.45.2, -semantic-conventions 0.66b2 (local, via mcp and mlflow) | 1.45.1 → 1.45.2 (2026-10-29) | CVE-2026-126360 (ReDoS in `traceparent` parsing). Tests, MCP server tool list and `import mlflow` pass |
 
-**Open, no ignore:** tornado 6.6 (local, via jupyter) has CVE-2026-126347 (open redirect), fixed in 6.6.1, released
-2026-11-09. Under the two-week rule the bump is due on **2026-11-23**. Until then the all-groups `pip-audit` (and so the
-`dependency-audit` check) stays red; the runtime audit is clean.
+tornado 6.6 → 6.6.1 (local, via jupyter; CVE-2026-126347, open redirect; released 2026-11-09) was bumped on 2026-11-24,
+once the two-week rule allowed it (2026-11-23). It is the only lockfile change; `pip-audit` is clean on the runtime set and
+on all groups.
 
 **Migrating the MLflow tracking store to 3.17.2.** Schema `b7e2c1a4d9f3` → `dc11669786a5`: 6 new, empty tables; no table
 dropped; no existing row changed. Tested on 2026-11-07 on copies of the store (187 runs), which kept their rows and read and wrote
