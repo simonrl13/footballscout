@@ -253,6 +253,22 @@ Every system's output goes through the unchanged `verify_events` and `contract_s
   precision, length limits or hardware is logged in the research log as a deviation before the re-run. Moving to
   Kaggle counts as a hardware change. None of these are switched silently.
 - **No prompt tuning for Qwen.** B and F get exactly the `extract-v3` system prompt plus the fixed schema paragraph.
+  The paragraph's exact text is `SCHEMA_PARAGRAPH` in `scout/finetune/infer.py`, committed before any model run.
+  Few-shot examples are earlier user and assistant turns: the document in `extract-v3`'s user format, then its hand
+  labels as `{"events": [...]}`.
+
+**Environment, recorded 2026-11-24 before any model run:**
+- **Packages:** torch `2.15.0+cu134` (CUDA 13.4 build), transformers 5.22.2, accelerate 1.15.0 and bitsandbytes
+  0.50.2.
+- **bitsandbytes uses its CUDA 13.2 build.** 0.50.2 ships no CUDA 13.4 binary, so it loads its 13.2 one under
+  torch's 13.4 build. `BNB_CUDA_VERSION` is not set. An NF4 quantize and dequantize round trip in bf16 ran on the GPU.
+- **GPU:** RTX 3050, 6 GB, compute capability 8.6, bf16 supported, driver 616.92. 5.04 GiB was free at the check,
+  because the display holds the rest.
+- **Run log:** every run appends one record to `data/finetune/runs.jsonl` (gitignored). It records:
+  - the commit, model revision, package versions and `BNB_CUDA_VERSION`;
+  - **free VRAM at start**;
+  - **peak VRAM per document,** allocated and reserved, from `torch.cuda` peak stats reset before each document;
+  - prompt and output tokens, seconds, and whether the output hit `max_new_tokens`.
 
 **Matching.** A system event matches a gold event when:
 - the `type` is the same;
