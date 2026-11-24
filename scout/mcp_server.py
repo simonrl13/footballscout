@@ -1,4 +1,4 @@
-"""MCP server (stdio) exposing the same four read-only tools as the REST API and the agent (scout/agent/tools.py).
+"""MCP server (stdio) exposing the same five read-only tools as the REST API and the agent (scout/agent/tools.py).
 
 Arguments are validated against the tools' Pydantic models (limits, enums) before any query; queries run on the
 read-only role in read-only transactions. Unknown arguments are dropped by the MCP SDK before they reach the tool.
