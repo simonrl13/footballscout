@@ -5,7 +5,7 @@ Strata come from keywords in the document text, so the choice doesn't depend on 
 documents (extract-v2, used while writing the prompt) are excluded.
 
 Usage:
-  uv run --env-file .env python -m scout.finetune.sample   # -> docs/evals/finetune_sample.csv (committed)
+  uv run --group finetune --env-file .env python -m scout.finetune.sample   # -> docs/evals/finetune_sample.csv (committed)
 """
 import hashlib
 import re

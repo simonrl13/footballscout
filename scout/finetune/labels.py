@@ -1,7 +1,7 @@
 """Hand-labelling files for the fine-tuning experiment (guide: docs/evals/finetune_labelling.md).
 
-  uv run --env-file .env python -m scout.finetune.labels render test   # -> labeling/finetune/test.md + test.csv
-  uv run --env-file .env python -m scout.finetune.labels check test    # validate the filled CSV
+  uv run --group finetune --env-file .env python -m scout.finetune.labels render test   # -> labeling/finetune/test.md + test.csv
+  uv run --group finetune --env-file .env python -m scout.finetune.labels check test    # validate the filled CSV
 
 The files hold Wikipedia text (CC BY-SA 4.0) and stay out of git (labeling/finetune/ is gitignored).
 """

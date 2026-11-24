@@ -7,10 +7,12 @@ the same question. Label what the text says, not what Claude or you would expect
 ## Files
 
 ```sh
-uv run --env-file .env python -m scout.finetune.labels render test   # once; also: render dev
-uv run --env-file .env python -m scout.finetune.labels check test    # any time; lists every problem
+uv run --group finetune --env-file .env python -m scout.finetune.labels render test   # once; also: render dev
+uv run --group finetune --env-file .env python -m scout.finetune.labels check test    # any time; lists every problem
 ```
 
+- **Always `uv run --group finetune`.** A plain `uv sync` or `uv run` syncs the default groups only, which removes
+  the experiment's packages.
 - **Documents to read:** `labeling/finetune/test.md`. Each document shows the player, the snapshot date, a link to
   the Wikipedia diff, and the text with numbered lines.
 - **Sheet to fill:** `labeling/finetune/test.csv`, with one row per document already in it. Add rows for documents

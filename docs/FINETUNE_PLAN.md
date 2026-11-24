@@ -407,11 +407,32 @@ Checked on PyPI and OSV on 2026-11-24. For each package, the pin is the newest s
 | tokenizers | 0.23.3 | 2026-10-09 | — | Apache-2.0 | Hugging Face. Transitive |
 | huggingface-hub | 2.4.0 | 2026-10-29 | — | Apache-2.0 | Hugging Face. Transitive; downloads the weights |
 
-- **Isolation:** everything goes in a new uv group, `finetune`, kept out of `default-groups`. So `uv sync`, the CI
-  `tests` job and the API image never install torch.
-- **Audit scope:** CI's `--all-groups` export would include the group, so pip-audit covers it.
-- **Lockfile check:** `uv lock` may pull other transitive packages, such as sympy, networkx, jinja2, regex and
-  CUDA wheels. Each one is listed, checked and shown to the owner before the lockfile is committed.
+**Installed for stage 3 (owner-approved 2026-11-24):**
+- **Direct pins:** torch `2.15.0+cu134`, transformers 5.22.2, accelerate 1.15.0, bitsandbytes 0.50.2, safetensors
+  0.8.0, tokenizers 0.23.3, huggingface-hub 2.4.0.
+- **13 new transitive packages:** fsspec 2026.9.0, hf-xet 1.8.0, markdown-it-py 4.3.0, mdurl 0.1.2, mpmath 1.3.0,
+  networkx 3.7, regex 2026.11.9, rich 15.0.0, setuptools 84.2.1, shellingham 1.5.4, sympy 1.14.0, tqdm 4.70.1 and
+  typer 0.29.0. All are released on or before 2026-11-10, with no OSV advisories. No existing package changed.
+- **Not yet:** peft, trl and datasets are needed only if training goes ahead, and are approved separately then.
+
+**How the group is set up:**
+- **Always `uv run --group finetune …`.** Every experiment command uses it, the labelling scripts included. A plain
+  `uv sync` syncs the default groups only and removes the experiment's packages.
+- **Isolation:** the `finetune` group is kept out of `default-groups`. So `uv sync`, the CI `tests` job and the API
+  image never install it.
+- **Windows only:** torch, accelerate and bitsandbytes carry `sys_platform == 'win32'`. With the marker on torch alone,
+  accelerate and bitsandbytes had pulled in PyPI's torch for other platforms, along with 15 nvidia-* packages and
+  triton. The lock now has none of them.
+- **Second index:** torch's CUDA build comes from `https://download.pytorch.org/whl/cu134`, declared with
+  `explicit = true` and mapped to torch alone in `[tool.uv.sources]`. Nothing else resolves from it, and the lock
+  has one torch: `2.15.0+cu134`, Windows wheel only. PyPI's Windows torch wheel is CPU-only.
+- **Temporary caps:** transformers would have pulled regex 2026.11.23 and typer 0.29.2, both under 14 days old. They
+  are capped in `constraint-dependencies` at regex 2026.11.9 and typer 0.29.0. The caps come off after 2026-12-02
+  (typer) and 2026-12-07 (regex).
+- **Audit scope:** CI's audit runs on Linux, where pip-audit skips every `win32`-only package. A separate CI step
+  audits those packages at their base versions, since the `+cu134` build isn't on PyPI. The step fails if torch,
+  accelerate or bitsandbytes is missing from that list. Auditing base torch 2.15.0 assumes the CUDA build has the
+  same advisories.
 - **Not proposed:** no constrained-decoding library (outlines, xgrammar), because JSON validity is one of the things
   measured. vLLM is out too: plain `generate` is enough at this scale.
 - **Version drift:** pins are rechecked on the day of install. A newer release that becomes allowed by then may

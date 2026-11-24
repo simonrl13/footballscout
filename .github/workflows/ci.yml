@@ -39,6 +39,14 @@ jobs:
       # Everything (local pipeline, training, dev tools): no ignores either.
       - run: uv export --frozen --format requirements-txt --no-emit-project --all-groups -o requirements-audit.txt
       - run: uvx pip-audit -r requirements-audit.txt --disable-pip --strict
+      # Windows-only pins (finetune group, pywin32, ...) are skipped above on Linux: audit them separately, base
+      # versions (torch's +cu134 build isn't on PyPI). Fail if the extraction comes back without the GPU packages.
+      - run: |
+          grep -E "^[a-z0-9-]+==[^ ]+ ; sys_platform == 'win32'" requirements-audit.txt | sed -E 's/\+[a-z0-9]+//; s/ ;.*//' > requirements-win.txt
+          grep -q '^torch==' requirements-win.txt
+          grep -q '^accelerate==' requirements-win.txt
+          grep -q '^bitsandbytes==' requirements-win.txt
+      - run: uvx pip-audit -r requirements-win.txt --no-deps --disable-pip --strict
 
   secrets:
     runs-on: ubuntu-latest
