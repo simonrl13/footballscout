@@ -481,6 +481,8 @@ Checked on PyPI and OSV on 2026-11-24. For each package, the pin is the newest s
 - `scout/finetune/` holds typed Python with tests and no network calls in tests:
   - `sample.py`: split and strata;
   - `labels.py`: render documents, validate the CSV with `locate()`;
+  - `label_ui.py` (+ `label_ui.html`): local browser labelling UI on 127.0.0.1. It writes the same CSV atomically,
+    runs `check()` live, and never shows model output or suggests labels;
   - `score.py`: matching, F1 and bootstrap;
   - `train.py`: QLoRA;
   - `infer.py`: B and F outputs to JSONL.

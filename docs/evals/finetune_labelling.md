@@ -4,6 +4,31 @@ These labels are the ground truth for comparing Claude with a small local model 
 The rules are the ones the extraction prompt (`extract-v3`) gives the models, so the labels and the systems answer
 the same question. Label what the text says, not what Claude or you would expect.
 
+## Labelling in the browser (recommended)
+
+```sh
+uv run --group finetune --env-file .env python -m scout.finetune.label_ui test   # then: ... label_ui dev
+```
+
+- **Starting:** this opens `http://127.0.0.1:8765/` in your browser. The server listens on this machine only. Stop
+  it with Ctrl+C.
+- **Postgres:** the first run needs it, to read the documents. Later runs use the copy the first run saves in
+  `labeling/finetune/<set>.docs.json`, so Docker can stay off.
+- **One document at a time:** the player, the snapshot date, the diff link and the numbered text are on the left.
+  The event forms are on the right.
+- **Evidence:** select the exact words in the document and they fill the **active** event's evidence (click a card to
+  make it active). Typing evidence isn't possible, so it is always verbatim. A counter shows the length against the
+  300-character limit.
+- **Events:** **+ Add event** for each one. **No events (none)** for a document with none. **Remove** deletes an event.
+- **Saving:** every change is saved to `labeling/finetune/<set>.csv` about half a second after you stop typing,
+  written to a temporary file and then renamed into place. Each start keeps a timestamped `.bak` copy of the sheet.
+- **Problems:** the same `check` as below runs on every save. Problems are listed above the forms, and the header
+  counts documents labelled and documents with problems.
+- **Resuming:** the UI opens at the first unlabelled document. `#N` in the address jumps to document N.
+- **Keyboard** (outside a field): `n` next, `p` previous, `0` none, `a` add event. `Esc` leaves a field.
+- **What you'll see:** dates and the player's name are highlighted in the text. The UI never shows Claude's or any
+  model's output and never suggests an event.
+
 ## Files
 
 ```sh

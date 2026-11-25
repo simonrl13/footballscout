@@ -311,6 +311,16 @@ Plan and pre-registration: [docs/FINETUNE_PLAN.md](docs/FINETUNE_PLAN.md). Nothi
   - `HF_HUB_DISABLE_TELEMETRY=1` is set for every run.
 - **What leaves the machine:** only the package and model downloads. Labels and documents stay local
   (`labeling/finetune/` is gitignored). No Claude outputs, secrets or database dumps go anywhere.
+- **Labelling UI** (`scout/finetune/label_ui.py`, run by hand, never deployed):
+  - **Network:** a FastAPI server bound to 127.0.0.1 only, with no authentication. Requests whose `Host` isn't
+    `127.0.0.1` or `localhost` get a 403, which guards against DNS rebinding.
+  - **Writes:** JSON `PUT` requests. A cross-site page can't send those without a CORS preflight, which the server
+    never answers.
+  - **What it touches:** it writes only `labeling/finetune/<set>.csv` (atomically) and its `.bak` and `.docs.json`
+    files, all gitignored.
+  - **Validation:** request bodies are validated with Pydantic, with length limits.
+  - **Page rendering:** document text goes into the page through `textContent` only, never as HTML.
+  - **No model data:** it reads `text_documents` and nothing from `text_extractions` or `text_signals`.
 - **Untrusted input:** document text is untrusted to the small model, as it is to Claude. Its output is parsed as
   data, and the same verifier drops events without a verbatim quote.
 
