@@ -27,9 +27,31 @@ dev = [
     "matplotlib>=3.11.2",
     "pre-commit>=4.6.2",
 ]
+# Fine-tuning experiment (docs/FINETUNE_PLAN.md): local Windows GPU only, never installed by default, in CI or the image.
+finetune = [
+    "torch==2.15.0 ; sys_platform == 'win32'",
+    "transformers==5.22.2",
+    "accelerate==1.15.0 ; sys_platform == 'win32'",  # requires torch
+    "bitsandbytes==0.50.2 ; sys_platform == 'win32'",  # requires torch
+    "safetensors==0.8.0",
+    "tokenizers==0.23.3",
+    "huggingface-hub==2.4.0",
+]
 
 [tool.uv]
 default-groups = ["dev", "local"]
+# TEMPORARY, two-week rule for transitive packages of the finetune group (newest release on or before 2026-11-10).
+# Remove typer's cap after 2026-12-02 and regex's after 2026-12-07, when 0.29.2 and 2026.11.23 are 14 days old.
+constraint-dependencies = ["regex<=2026.11.9", "typer<=0.29.0"]
+
+# CUDA build of torch (PyPI's Windows wheel is CPU-only). Explicit: used for torch only, nothing else.
+[[tool.uv.index]]
+name = "pytorch-cu134"
+url = "https://download.pytorch.org/whl/cu134"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu134" }
 
 [build-system]
 requires = ["hatchling"]

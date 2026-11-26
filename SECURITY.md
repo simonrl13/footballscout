@@ -286,6 +286,44 @@ Bumped instead (fix older than two weeks): aiohttp 3.14.3 → 3.14.4 (8 advisori
 
 - **Direction check (2026-10-23):** `tests/test_direction.py`: "a rise of 18.6%", "+18.6%" and "an 18.6% increase" are caught for -18.6 although the number check alone passes them; interval bounds with the wrong sign are caught; agreeing, negated and undirected percentages pass; a magnitude held with both signs passes (limitation); non-percentages and sign-unknown sources (question, passages) are out of scope. `tests/test_agent.py`: a contradicting answer is retried, then blocked, both logged as `direction_check`; a contradiction fixed on retry is released with one logged violation. Validation on recorded answers, no model calls: the CI replay (16) and the full dev set (37) pass with the check enforced, entirely from the response cache (any new retry would have needed an unrecorded call); the recorded held-out answers (20, replayed with the commit that produced them) contain no released answer the check would flag (`scout/evals/direction_replay.py`).
 
+## Fine-tuning experiment (local only, 2026-11-24)
+Plan and pre-registration: [docs/FINETUNE_PLAN.md](docs/FINETUNE_PLAN.md). Nothing in this section reaches the API image or a deploy.
+
+- **Dependencies:** the uv group `finetune`, owner-approved package by package, each at least two weeks old with no OSV
+  advisory: torch `2.15.0+cu134`, transformers 5.22.2, accelerate 1.15.0, bitsandbytes 0.50.2, safetensors 0.8.0,
+  tokenizers 0.23.3 and huggingface-hub 2.4.0, plus 13 transitive packages listed in the plan.
+  - The group isn't in `default-groups`, so CI's `tests` job and the API image never install it.
+  - It is used only through `uv run --group finetune`.
+- **Second package index:** `download.pytorch.org/whl/cu134`, declared `explicit = true` and mapped to torch alone.
+  torch, accelerate and bitsandbytes are Windows-only (`sys_platform == 'win32'`), and the lock has no nvidia-* or
+  triton packages.
+- **Temporary caps:** regex ≤ 2026.11.9 and typer ≤ 0.29.0, under the two-week rule. They come off after 2026-12-07
+  and 2026-12-02 respectively.
+- **Audit coverage:** pip-audit on Linux skips `win32`-only packages. This covered pywin32, colorama and waitress
+  before this change, and torch, accelerate and bitsandbytes now.
+  - A separate CI step audits that list at base versions, with `--no-deps`.
+  - The step fails if torch, accelerate or bitsandbytes is missing from the list.
+  - Limitation: torch is audited as 2.15.0, on the assumption that the `+cu134` build has the same advisories.
+- **Model provenance:** `Qwen/Qwen3-4B-Instruct-2507` at revision `cdbee75f17c01a7cc42f958dc650907174af0554`
+  (Apache-2.0, not gated, no token).
+  - Loaded with `use_safetensors=True` and `trust_remote_code=False`.
+  - The cache is the default user Hugging Face cache, outside the repo.
+  - `HF_HUB_DISABLE_TELEMETRY=1` is set for every run.
+- **What leaves the machine:** only the package and model downloads. Labels and documents stay local
+  (`labeling/finetune/` is gitignored). No Claude outputs, secrets or database dumps go anywhere.
+- **Labelling UI** (`scout/finetune/label_ui.py`, run by hand, never deployed):
+  - **Network:** a FastAPI server bound to 127.0.0.1 only, with no authentication. Requests whose `Host` isn't
+    `127.0.0.1` or `localhost` get a 403, which guards against DNS rebinding.
+  - **Writes:** JSON `PUT` requests. A cross-site page can't send those without a CORS preflight, which the server
+    never answers.
+  - **What it touches:** it writes only `labeling/finetune/<set>.csv` (atomically) and its `.bak` and `.docs.json`
+    files, all gitignored.
+  - **Validation:** request bodies are validated with Pydantic, with length limits.
+  - **Page rendering:** document text goes into the page through `textContent` only, never as HTML.
+  - **No model data:** it reads `text_documents` and nothing from `text_extractions` or `text_signals`.
+- **Untrusted input:** document text is untrusted to the small model, as it is to Claude. Its output is parsed as
+  data, and the same verifier drops events without a verbatim quote.
+
 ## Known limitations
 - Text documents are written with the loader role. The API and agent will only read them (`scout_reader`).
 - `.claude/settings.json` guards the coding assistant, not the machine: shell commands outside its deny list could still read `.env`. Tools that load `.env` (e.g. `uv --env-file`) may echo malformed lines in warnings (see the incident log).

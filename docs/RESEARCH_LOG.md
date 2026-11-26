@@ -975,6 +975,110 @@ Merged with the owner's go-ahead (squash, no bypass), each after all required ch
   permission rules (since moved to `settings.local.json`). No code was uncommitted; the deployed code is the merge
   commit named in each report.
 
+## 2026-11-24 — PRE-REGISTRATION: small open model for Wikipedia event extraction (staged)
+
+Full plan: [docs/FINETUNE_PLAN.md](FINETUNE_PLAN.md) (§3 sampling, §4 evaluation and decision rule). This entry
+fixes it before any label, score or model download exists.
+
+- **Goal: local extraction with no API dependency.** Can a 1–4B open model (Qwen3-4B-Instruct-2507, pinned at
+  commit `cdbee75f17c0…`) run `extract-v3` on this machine at quality close to Claude's?
+  - It is not a cost experiment: the whole corpus already cost US$2.77.
+  - It can't move a shipped number: the text features were a pre-registered negative result (2026-10-12).
+- **Terms.** The Anthropic Usage Policy bars using outputs to train a model without prior authorization. So Claude's
+  stored outputs are used only as system C in the evaluation. Training and few-shot examples come from the owner's
+  hand labels. No authorization is requested.
+- **Sets** (drawn 2026-11-24 by `scout.finetune.sample`, in `docs/evals/finetune_sample.csv`):
+  - test 150, dev 30, train 150;
+  - split by a hash of the player ID, so a page never lands in two sets;
+  - 5 keyword strata (injury, contract, loan, transfer, none), 30 per stratum (6 for dev);
+  - 24,093 candidates, excluding the 167 documents a pilot had already extracted.
+- **Staged.** The owner labels test and dev first (guide: `docs/evals/finetune_labelling.md`). Then:
+  - C is scored from the stored outputs;
+  - B is the base model: zero-shot vs 3-shot (shots drawn from dev), chosen on the other 27 dev documents;
+  - both are scored once on test.
+
+  The owner then decides whether to label the train set and run one QLoRA training (F). F's hyperparameters are
+  fixed in §6, and dev picks only its epoch.
+- **Primary metric:** kept-event micro-F1 against the hand labels, gold filtered by the same window and date rules.
+  Matching: same type, date at the gold precision, and overlapping evidence or the same line. Paired bootstrap with
+  10,000 resamples, seed 20261124.
+- **Decision rule** (B at stage 3, F if trained). It replaces C only if all five hold:
+  1. F1 at least C's minus 3 points, with the paired 95% interval's lower bound at least −6;
+  2. quote pass rate at least 98%;
+  3. invalid JSON at most 1% of documents;
+  4. every type with at least 25 gold kept events at least C's F1 minus 10 points;
+  5. p95 latency at most 10 s per document.
+
+  Otherwise Claude stays.
+- **Claude latency:** 150 serial live calls on the test documents (about US$0.04, approved). Only their latency is
+  used.
+- **Known threats:**
+  - one labeller, with a 10% second pass;
+  - pretraining exposure to Wikipedia;
+  - looking at B's test result before deciding whether F exists.
+- **Every run is recorded here, failed ones included.**
+
+## 2026-11-24 — AMENDMENT 1 to the extraction pre-registration (before any label, score or download)
+
+This entry is written after the pre-registration entry above (commit 3297c14) and before any label, score, model
+download or dependency install. Full text: [docs/FINETUNE_PLAN.md](FINETUNE_PLAN.md) §4.
+
+- **Few-shot examples come from dev, not train.** The original plan took them from train. Train isn't labelled in
+  the staged plan.
+  - The 3 example documents are drawn with seed 20261124 from dev documents that have at least one labelled event.
+  - The zero-shot vs 3-shot choice is made on the other 27 dev documents by kept-event F1. Ties go to zero-shot.
+  - 3-shot stays a candidate, because the owner labels dev.
+- **Schema in the prompt.** B and F get the `extract-v3` system prompt plus one fixed paragraph that gives `SCHEMA` as
+  text. Claude received the schema through structured outputs. The prompt isn't tuned for Qwen.
+- **Unconstrained decoding.** transformers 5.22.2 has no JSON-schema-constrained decoding without a new dependency,
+  so B and F run unconstrained. Greedy decoding, batch 1, `max_new_tokens=2048`, the model's chat template.
+- **Unparseable output is a failed extraction.** That covers output that doesn't parse after stripping whitespace and
+  one code fence, fails the `SCHEMA` check, or stops at `max_new_tokens`.
+  - It counts as zero events, so its gold events are false negatives. It counts toward the invalid-JSON rate.
+  - No retry and no repair.
+  - The same applies to C's stored results with status `refusal` or `max_tokens`.
+- **Precision and hardware.** The model is `Qwen/Qwen3-4B-Instruct-2507` at revision
+  `cdbee75f17c01a7cc42f958dc650907174af0554`, loaded with `use_safetensors=True` and `trust_remote_code=False`.
+  - It runs in 4-bit NF4 via bitsandbytes, with bf16 compute and no double quantization.
+  - The hardware is the owner's RTX 3050: desktop, 6 GB VRAM, 70 W.
+  - An out-of-memory error stops the run and is reported. Any change to precision, length limits or hardware is
+    logged here as a deviation before a re-run; Kaggle counts as a hardware change.
+- **How the ±3-point rule is judged at n = 150.** A paired bootstrap over the test documents (10,000 resamples, seed
+  20261124) recomputes both systems' micro-F1 on each resample, and the 2.5th and 97.5th percentiles of the
+  difference form the interval.
+  - Condition 1 passes only if the point estimate is at least −3 points and the lower bound is at least −6.
+  - A lower bound under −6 because the interval is wide counts as a fail, reported as "closeness not shown".
+- **What B's result means for training:**
+  - **B passes all five conditions:** stop. The base model is enough, and train isn't labelled.
+  - **B fails, with kept-event F1 no more than 30 points below C's:** training is recommended, including when only
+    the JSON, quote or latency conditions fail.
+  - **B's F1 is more than 30 points below C's:** training is not recommended; stop and report B.
+  - The owner may always decline the train labelling for time, and that reason is recorded.
+- **Known limitation:** `extract-v3` was developed on Claude, so B may be understated by a prompt written for
+  another model.
+
+## 2026-11-24 — SMOKE TEST (not a result): base model memory on the RTX 3050
+
+This is a memory check only. The output wasn't kept or scored, and no sampled document was used.
+
+- **Run:** commit 54864fb, `python -m scout.finetune.infer --smoke`, model revision `cdbee75f…`, NF4 with bf16
+  compute, `BNB_CUDA_VERSION` unset (bitsandbytes loads its CUDA 13.2 build), greedy, `max_new_tokens=2048`.
+- **Documents:** all from outside the test, dev and train sets and their players.
+  - **Target:** `wikipedia:enwiki:diff:911707274:975823253`. Its stored Claude input count is 5,198 tokens, against
+    5,209 for the longest test document.
+  - **Shots:** 3 stand-in documents at the dev median of 1,565 Claude tokens. Their event lists are empty, because no
+    hand labels exist yet and Claude outputs can't be examples.
+- **Prompt:** 4,905 Qwen tokens: system with schema 553, target 3,044, the shots about 420 each. Claude's counts are
+  larger because they include the structured-output schema overhead and a different tokenizer.
+- **Result:** completed in 6.4 s. Free VRAM at start was 5.05 GiB; the peak was 3.70 GiB allocated and 3.96 GiB
+  reserved. No out-of-memory error.
+- **Caveats:**
+  - The model returned 6 tokens. It copied the empty pattern of the stand-in shots, so long outputs weren't
+    exercised. At about 0.15 MB of KV cache per token in bf16, 2,048 output tokens would add about 0.3 GiB.
+  - The pre-registered shots are drawn from dev documents with at least one labelled event, with no length cap. The
+    longest dev document is 11,577 Claude tokens, so an unlucky draw could make the prompt about three times this
+    one, and it could run out of memory. If it does, it is reported and logged as a deviation, as pre-registered.
+
 ---
 
 ## 2026-11-21 — Dependency advisories: soupsieve and opentelemetry bumped, tornado due 2026-11-23
@@ -993,6 +1097,23 @@ Details are in SECURITY.md (Dependency exceptions).
 
 tornado 6.6 → 6.6.1 (CVE-2026-126347), due under the two-week rule since 2026-11-23 (released 2026-11-09). Only tornado
 changed in `uv.lock`; `pip-audit` is clean on the runtime set and on all groups, so `dependency-audit` can go green.
+
+## 2026-11-26 — PAUSED: local extraction experiment (no labels, nothing scored)
+
+The owner paused the experiment because there's no time to label now.
+- **Nothing was scored.** No hand labels exist. No system (C, B or F) has been scored, the latency calls haven't run,
+  and the only model run is the 2026-11-24 memory smoke test, which was on unsampled documents and not scored.
+- **The pre-registration (2026-11-24) and Amendment 1 stand unchanged.** That covers the sets in
+  `docs/evals/finetune_sample.csv`, the metrics, the decision rule, the 30-point training trigger, the inference
+  settings and the environment record.
+- **Kept as they are:** the plan, the labelling UI and the `finetune` dependency group, plus the downloaded weights
+  in the user cache. Draft PR #78 stays open and unmerged.
+- **To resume:**
+  - label test, then dev, with `python -m scout.finetune.label_ui`;
+  - recheck the pins and the temporary regex and typer caps against the two-week rule on the day;
+  - continue from stage 3 of the plan.
+
+  Anything that changes the protocol on resuming is logged as an amendment before scoring.
 
 ---
 
