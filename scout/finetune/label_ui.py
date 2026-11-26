@@ -92,7 +92,7 @@ def create_app(docs: pd.DataFrame, sheet: Path) -> FastAPI:
     @app.middleware("http")
     async def local_only(request: Request, call_next):  # DNS-rebinding guard: only our own host names
         host = request.headers.get("host", "").rsplit(":", 1)[0]
-        if host not in ("127.0.0.1", "localhost", "testserver"):
+        if host not in ("127.0.0.1", "localhost"):
             return HTMLResponse("forbidden", status_code=403)
         return await call_next(request)
 

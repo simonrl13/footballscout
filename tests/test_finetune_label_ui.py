@@ -50,7 +50,7 @@ def test_backup_copies_the_sheet(sheet):
 
 
 def test_api_saves_reports_problems_and_resumes(sheet):
-    c = TestClient(label_ui.create_app(DOCS, sheet))
+    c = TestClient(label_ui.create_app(DOCS, sheet), base_url="http://127.0.0.1:8765")
     d = c.get("/api/docs").json()
     assert (d["done"], d["total"], d["first_unlabelled"]) == (0, 2, 0)
     r = c.put("/api/doc/0", json={"rows": [EV | {"evidence": "not in the text"}]}).json()
@@ -63,9 +63,10 @@ def test_api_saves_reports_problems_and_resumes(sheet):
 
 
 def test_only_local_host_names_are_served(sheet):
-    c = TestClient(label_ui.create_app(DOCS, sheet))
+    c = TestClient(label_ui.create_app(DOCS, sheet), base_url="http://127.0.0.1:8765")
     assert c.get("/", headers={"host": "evil.example:8765"}).status_code == 403
     assert c.get("/api/docs", headers={"host": "127.0.0.1:8765"}).status_code == 200
+    assert c.get("/", headers={"host": "testserver"}).status_code == 403  # TestClient's default host isn't allowed
 
 
 def test_page_never_shows_extractions_or_suggestions():

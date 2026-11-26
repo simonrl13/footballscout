@@ -1098,6 +1098,23 @@ Details are in SECURITY.md (Dependency exceptions).
 tornado 6.6 → 6.6.1 (CVE-2026-126347), due under the two-week rule since 2026-11-23 (released 2026-11-09). Only tornado
 changed in `uv.lock`; `pip-audit` is clean on the runtime set and on all groups, so `dependency-audit` can go green.
 
+## 2026-11-26 — PAUSED: local extraction experiment (no labels, nothing scored)
+
+The owner paused the experiment because there's no time to label now.
+- **Nothing was scored.** No hand labels exist. No system (C, B or F) has been scored, the latency calls haven't run,
+  and the only model run is the 2026-11-24 memory smoke test, which was on unsampled documents and not scored.
+- **The pre-registration (2026-11-24) and Amendment 1 stand unchanged.** That covers the sets in
+  `docs/evals/finetune_sample.csv`, the metrics, the decision rule, the 30-point training trigger, the inference
+  settings and the environment record.
+- **Kept as they are:** the plan, the labelling UI and the `finetune` dependency group, plus the downloaded weights
+  in the user cache. Draft PR #78 stays open and unmerged.
+- **To resume:**
+  - label test, then dev, with `python -m scout.finetune.label_ui`;
+  - recheck the pins and the temporary regex and typer caps against the two-week rule on the day;
+  - continue from stage 3 of the plan.
+
+  Anything that changes the protocol on resuming is logged as an amendment before scoring.
+
 ---
 
 ## Paper notes

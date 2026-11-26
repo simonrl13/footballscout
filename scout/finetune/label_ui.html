@@ -73,7 +73,7 @@ kbd { font: 12px var(--mono); border: 1px solid var(--line); border-radius: 3px;
   <button id="prev" title="Previous (p)">← Prev</button>
   <span id="pos" class="status"></span>
   <button id="next" title="Next (n)">Next →</button>
-  <div class="progress" role="progressbar" aria-label="Documents labelled" id="bar"><div></div></div>
+  <div class="progress" role="progressbar" aria-label="Documents labelled" aria-valuemin="0" aria-valuenow="0" id="bar"><div></div></div>
   <span id="done" class="status"></span>
   <span id="saved" class="status" aria-live="polite"></span>
 </header>
@@ -101,13 +101,18 @@ const MAX = 300;
 const MONTHS = "January|February|March|April|May|June|July|August|September|October|November|December";
 let docs = [], i = 0, rows = [], active = 0, timer = null;
 const $ = (id) => document.getElementById(id);
-const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
+const el = (tag, props = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) k.startsWith("aria-") || k === "role" ? e.setAttribute(k, v) : (e[k] = v);
+  e.append(...kids);
+  return e;
+};
 const norm = (s) => s.replace(/\s+/g, " ").trim();
 const blank = () => Object.fromEntries(FIELDS.map((f) => [f, ""]));
 const isNone = () => rows.length === 1 && rows[0].type === "none";
 
-async function api(method, path, body) {
-  const r = await fetch(path, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body && JSON.stringify(body) });
+async function api(method, path, body, keepalive = false) {  // keepalive: the request outlives the page (unload)
+  const r = await fetch(path, { method, keepalive, headers: body ? { "Content-Type": "application/json" } : {}, body: body && JSON.stringify(body) });
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
   return r.json();
 }
@@ -154,11 +159,12 @@ function renderEvents() {
       ...TYPES.map((t) => el("option", { value: t, textContent: t, selected: r.type === t })));
     sel.addEventListener("change", () => { r.type = sel.value; queueSave(); });
     const n = norm(r.evidence).length;
-    const ev = el("div", { className: "evidence" + (r.evidence ? "" : " empty"),
-      textContent: r.evidence || "Select the exact words in the document." });
+    const ev = el("div", { className: "evidence" + (r.evidence ? "" : " empty"), role: "status", "aria-live": "polite",
+      "aria-label": `Evidence for event ${k + 1}`, textContent: r.evidence || "Select the exact words in the document." });
     const del = el("button", { className: "link", textContent: "Remove", "aria-label": `Remove event ${k + 1}` });
     del.addEventListener("click", (e) => { e.stopPropagation(); rows.splice(k, 1); active = Math.max(0, Math.min(active, rows.length - 1)); renderEvents(); queueSave(); });
-    const card = el("div", { className: "event" + (k === active ? " active" : "") },
+    const card = el("div", { className: "event" + (k === active ? " active" : ""), role: "group",
+      "aria-label": `Event ${k + 1}`, "aria-current": k === active ? "true" : "false" },
       el("h3", {}, `Event ${k + 1}${k === active ? " · active" : ""}`, del),
       el("div", { className: "grid" },
         el("label", {}, "type", sel), field(r, "date", "date (YYYY-MM-DD / YYYY-MM / YYYY)"),
@@ -183,6 +189,7 @@ function renderProgress(pr) {
   $("done").textContent = `${pr.done} / ${pr.total} labelled` + (pr.with_problems.length ? ` · ${pr.with_problems.length} with problems` : "");
   $("bar").firstElementChild.style.width = `${(100 * pr.done) / pr.total}%`;
   $("bar").setAttribute("aria-valuenow", pr.done); $("bar").setAttribute("aria-valuemax", pr.total);
+  $("bar").setAttribute("aria-valuetext", `${pr.done} of ${pr.total} labelled`);
 }
 
 function queueSave() { clearTimeout(timer); $("saved").textContent = "editing…"; timer = setTimeout(save, 400); }
@@ -231,7 +238,9 @@ $("prev").addEventListener("click", () => go(i - 1));
 $("next").addEventListener("click", () => go(i + 1));
 $("add").addEventListener("click", addEvent);
 $("none").addEventListener("click", setNone);
-window.addEventListener("beforeunload", (e) => { if (timer) { save(); e.preventDefault(); } });
+window.addEventListener("pagehide", () => {  // a pending edit is sent even as the tab closes or reloads
+  if (timer) { clearTimeout(timer); timer = null; api("PUT", `/api/doc/${i}`, { rows }, true).catch(() => {}); }
+});
 
 (async () => {
   const d = await api("GET", "/api/docs");

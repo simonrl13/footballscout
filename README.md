@@ -27,7 +27,7 @@ The demo runs until 1 January 2027. After that, see the walkthrough video.
 - [x] **M4b (text, no extraction)** — `search_text` over the demo players' Wikipedia pages (Postgres full-text search), every answer citing the exact revision with the CC BY-SA notice; agent on Claude Haiku 5.5; tracing dashboard and prompt caching (M6 pieces). See [Agent](#agent-m4a-m4b).
 - [ ] LLM judge · rate limits (M6) · M7 — AWS deploy
 - [x] **M8** — keyword vs vector vs hybrid retrieval, pre-registered: switching rule not met, keyword stays the default. See [Retrieval](#retrieval-keyword-vs-hybrid-m8).
-- [ ] **Local extraction experiment (pre-registered, in progress)** — can a small open model run the Wikipedia event extraction on local hardware, with no API dependency, at quality close to Claude's? Hand-labelled test set; no results yet. Plan: [docs/FINETUNE_PLAN.md](docs/FINETUNE_PLAN.md).
+- [ ] **Local extraction experiment (pre-registered), paused: no labels, no results yet** — can a small open model run the Wikipedia event extraction on local hardware, with no API dependency, at quality close to Claude's? Plan: [docs/FINETUNE_PLAN.md](docs/FINETUNE_PLAN.md).
 
 ## Problem (from the SPEC)
 - **Unit:** one player on **1 September** each year, 2013–2024.
